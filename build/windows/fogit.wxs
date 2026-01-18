@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs" xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+  <Package
+    Name="FoGit"
+    UpgradeCode="E3F8A1B2-7C4D-5E6F-9A0B-1C2D3E4F5A6B"
+    Language="1033"
+    Codepage="1252"
+    Version="$(ProductVersion)"
+    Manufacturer="eg3r"
+    InstallerVersion="500"
+    Scope="perUserOrMachine">
+
+    <SummaryInformation
+      Keywords="Installer"
+      Description="FoGit - Git-native feature tracking system"
+      Manufacturer="eg3r" />
+
+    <MajorUpgrade
+      DowngradeErrorMessage="A newer version of FoGit is already installed." />
+
+    <Media Id="1" Cabinet="fogit.cab" EmbedCab="yes" />
+
+    <!-- Advanced UI with install scope selection -->
+    <ui:WixUI Id="WixUI_Advanced" />
+    <Property Id="ApplicationFolderName" Value="FoGit" />
+    <Property Id="WixAppFolder" Value="WixPerUserFolder" />
+    <WixVariable Id="WixUILicenseRtf" Value="license.rtf" />
+
+    <Feature Id="Complete" Level="1" Title="FoGit" Description="Git-native feature tracking system">
+      <ComponentGroupRef Id="UserInstall" />
+      <ComponentGroupRef Id="MachineInstall" />
+    </Feature>
+
+    <!-- Per-User install location: %USERPROFILE%\go\bin -->
+    <StandardDirectory Id="PersonalFolder">
+      <Directory Id="GoFolder" Name="go">
+        <Directory Id="INSTALLFOLDER_USER" Name="bin" />
+      </Directory>
+    </StandardDirectory>
+
+    <!-- Per-Machine install location: Program Files\FoGit -->
+    <StandardDirectory Id="ProgramFiles64Folder">
+      <Directory Id="INSTALLFOLDER_MACHINE" Name="FoGit" />
+    </StandardDirectory>
+
+    <!-- Per-User components (only installed when ALLUSERS is empty) -->
+    <ComponentGroup Id="UserInstall">
+      <Component Id="MainExecutableUser" Directory="INSTALLFOLDER_USER" Guid="A1B2C3D4-E5F6-7890-ABCD-EF1234567890" Condition="NOT ALLUSERS">
+        <File Id="fogit_user.exe" Name="fogit.exe" Source="fogit.exe" KeyPath="yes" />
+      </Component>
+      <Component Id="PathEntryUser" Directory="INSTALLFOLDER_USER" Guid="B2C3D4E5-F6A7-8901-BCDE-F23456789012" Condition="NOT ALLUSERS">
+        <Environment Id="PATH_USER" Name="PATH" Value="[INSTALLFOLDER_USER]" Permanent="no" Part="last" Action="set" System="no" />
+      </Component>
+    </ComponentGroup>
+
+    <!-- Per-Machine components (only installed when ALLUSERS=1) -->
+    <ComponentGroup Id="MachineInstall">
+      <Component Id="MainExecutableMachine" Directory="INSTALLFOLDER_MACHINE" Guid="D4E5F6A7-B8C9-0123-DEF0-456789ABCDEF" Condition="ALLUSERS">
+        <File Id="fogit_machine.exe" Name="fogit.exe" Source="fogit.exe" KeyPath="yes" />
+      </Component>
+      <Component Id="PathEntryMachine" Directory="INSTALLFOLDER_MACHINE" Guid="E5F6A7B8-C9D0-1234-EF01-56789ABCDEF0" Condition="ALLUSERS">
+        <Environment Id="PATH_MACHINE" Name="PATH" Value="[INSTALLFOLDER_MACHINE]" Permanent="no" Part="last" Action="set" System="yes" />
+      </Component>
+    </ComponentGroup>
+
+  </Package>
+</Wix>

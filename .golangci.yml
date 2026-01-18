@@ -1,0 +1,81 @@
+# GolangCI-Lint configuration for FoGit
+# Run with: golangci-lint run
+
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+linters:
+  enable:
+    # Default linters
+    - errcheck      # Check for unchecked errors
+    - gosimple      # Simplify code
+    - govet         # Examine Go source code for suspicious constructs
+    - ineffassign   # Detect ineffectual assignments
+    - staticcheck   # Advanced static analysis
+    - unused        # Check for unused code
+
+    # Additional linters
+    - gofmt         # Check formatting
+    - goimports     # Check import formatting
+    - misspell      # Find commonly misspelled English words
+    - unconvert     # Remove unnecessary type conversions
+    - unparam       # Find unused function parameters
+    - gosec         # Security checker
+    - bodyclose     # Check HTTP response body is closed
+    - noctx         # Find HTTP requests without context.Context
+    - whitespace    # Check for unnecessary whitespace
+
+linters-settings:
+  errcheck:
+    # Check type assertions
+    check-type-assertions: true
+    # Check blank identifier assignments
+    check-blank: false
+
+  govet:
+    enable-all: true
+    disable:
+      - fieldalignment # Too noisy for this project
+      - shadow         # Too noisy in test files - common Go pattern
+
+  gofmt:
+    simplify: true
+
+  goimports:
+    local-prefixes: github.com/eg3r/fogit
+
+  misspell:
+    locale: US
+
+  gosec:
+    excludes:
+      - G104 # Audit errors not checked (too noisy with defer)
+      - G304 # File path provided as taint input (intentional for CLI)
+
+issues:
+  # Maximum issues count per one linter
+  max-issues-per-linter: 50
+  # Maximum count of issues with the same text
+  max-same-issues: 10
+
+  exclude-rules:
+    # Exclude some linters from running on tests files
+    - path: _test\.go
+      linters:
+        - gosec
+        - unparam
+        - errcheck
+
+    # Exclude known false positives
+    - linters:
+        - staticcheck
+      text: "SA1019:" # Deprecated functions - review individually
+
+    # Allow long lines in generated code
+    - path: ".*\\.gen\\.go"
+      linters:
+        - lll
+
+  # Show all issues from a linter
+  new: false

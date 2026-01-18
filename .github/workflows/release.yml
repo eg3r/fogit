@@ -1,0 +1,216 @@
+# Release Workflow - Triggered on version tags
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  # Check if CI already passed for the tagged commit
+  check-ci:
+    name: Check CI Status
+    runs-on: ubuntu-latest
+    outputs:
+      ci_passed: ${{ steps.check.outputs.ci_passed }}
+    steps:
+      - name: Check if CI passed for this commit
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Get the commit SHA for the tag
+          SHA="${{ github.sha }}"
+          echo "Checking CI status for commit: $SHA"
+          
+          # Check if there's a successful CI workflow run for this commit
+          RESULT=$(gh api repos/${{ github.repository }}/commits/$SHA/check-runs \
+            --jq '.check_runs[] | select(.name == "Lint" and .conclusion == "success") | .id' \
+            2>/dev/null || echo "")
+          
+          if [ -n "$RESULT" ]; then
+            echo "CI already passed for this commit"
+            echo "ci_passed=true" >> $GITHUB_OUTPUT
+          else
+            echo "No successful CI run found for this commit"
+            echo "ci_passed=false" >> $GITHUB_OUTPUT
+          fi
+
+  # Run CI checks only if not already passed
+  lint:
+    name: Lint
+    needs: check-ci
+    if: needs.check-ci.outputs.ci_passed != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=5m
+
+  test:
+    name: Test
+    needs: check-ci
+    if: needs.check-ci.outputs.ci_passed != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git config --global init.defaultBranch main
+
+      - name: Run tests
+        run: go test -v ./...
+
+  release:
+    name: Release
+    needs: [check-ci, lint, test]
+    # Run if CI already passed (lint/test skipped) OR if lint/test succeeded
+    if: |
+      always() && 
+      !cancelled() &&
+      (needs.check-ci.outputs.ci_passed == 'true' || 
+       (needs.lint.result == 'success' && needs.test.result == 'success'))
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.get_version.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get version
+        id: get_version
+        run: echo "version=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: 'go.mod'
+          cache: true
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          version: '~> v2'
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Build Windows MSI installer using WiX
+  windows-installer:
+    name: Windows Installer
+    needs: release
+    if: always() && needs.release.result == 'success'
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Windows binary
+        uses: robinraju/release-downloader@v1
+        with:
+          repository: ${{ github.repository }}
+          tag: ${{ github.ref_name }}
+          fileName: fogit_windows_amd64.zip
+          out-file-path: installer
+
+      - name: Extract binary
+        shell: pwsh
+        run: |
+          cd installer
+          Expand-Archive -Path fogit_windows_amd64.zip -DestinationPath .
+
+      - name: Install WiX Toolset
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          wix extension add -g WixToolset.UI.wixext/5.0.2
+          wix extension add -g WixToolset.Util.wixext/5.0.2
+
+      - name: Build MSI
+        shell: pwsh
+        run: |
+          cd installer
+          Copy-Item ../build/windows/fogit.wxs .
+          Copy-Item ../build/windows/license.rtf .
+          $version = "${{ github.ref_name }}".TrimStart('v')
+          wix build fogit.wxs -d ProductVersion=$version -ext WixToolset.UI.wixext -ext WixToolset.Util.wixext -o fogit_windows_amd64_setup.msi
+
+      - name: Upload MSI to release
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload ${{ github.ref_name }} installer/fogit_windows_amd64_setup.msi --clobber
+
+  # Verify release artifacts
+  verify:
+    name: Verify Release (${{ matrix.os }})
+    needs: [release, windows-installer]
+    if: always() && needs.release.result == 'success' && needs.windows-installer.result == 'success'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset: fogit_linux_amd64.tar.gz
+          - os: macos-latest
+            asset: fogit_darwin_arm64.tar.gz
+          - os: windows-latest
+            asset: fogit_windows_amd64.zip
+    steps:
+      - name: Download release asset
+        uses: robinraju/release-downloader@v1
+        with:
+          repository: ${{ github.repository }}
+          tag: ${{ github.ref_name }}
+          fileName: ${{ matrix.asset }}
+          out-file-path: dist
+
+      - name: Extract and verify (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          cd dist
+          tar -xzf ${{ matrix.asset }}
+          ./fogit --version
+
+      - name: Extract and verify (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          cd dist
+          tar -xzf ${{ matrix.asset }}
+          ./fogit --version
+
+      - name: Extract and verify (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cd dist
+          Expand-Archive -Path ${{ matrix.asset }} -DestinationPath .
+          .\fogit.exe --version

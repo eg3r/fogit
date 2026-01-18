@@ -1,0 +1,109 @@
+﻿# GoReleaser configuration for FoGit
+# Documentation: https://goreleaser.com
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+
+version: 2
+
+project_name: fogit
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: fogit
+    main: ./main.go
+    binary: fogit
+    env:
+      - CGO_ENABLED=0
+    # Limited to 3 platforms per DISTRIBUTION.md
+    targets:
+      - linux_amd64
+      - darwin_arm64
+      - windows_amd64
+    ldflags:
+      - -s -w
+      - -X github.com/eg3r/fogit/commands.Version={{.Version}}
+      - -X github.com/eg3r/fogit/commands.Commit={{.Commit}}
+      - -X github.com/eg3r/fogit/commands.Date={{.Date}}
+    flags:
+      - -trimpath
+
+# Archive naming for go-selfupdate: {cmd}_{goos}_{goarch}.{ext}
+# NO VERSION in filename - version is determined by Git tag
+archives:
+  - id: default
+    formats: tar.gz
+    format_overrides:
+      - goos: windows
+        formats: zip
+    # go-selfupdate requires this exact format
+    name_template: "{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE*
+      - CHANGELOG*
+
+checksum:
+  name_template: 'checksums.txt'
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^ci:'
+      - '^chore:'
+      - Merge pull request
+      - Merge branch
+  groups:
+    - title: '🚀 Features'
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: '🐛 Bug Fixes'
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: '📚 Documentation'
+      regexp: '^.*?docs(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: '🔧 Maintenance'
+      order: 999
+
+release:
+  github:
+    owner: eg3r
+    name: fogit
+  draft: false  # Publish immediately for CI to pick up artifacts
+  prerelease: auto
+  mode: replace
+  header: |
+    ## FoGit {{ .Version }}
+    
+    Git-native feature tracking system with YAML storage.
+  footer: |
+    ## Installation
+    
+    **Windows:** Download and run `fogit_windows_amd64_setup.exe` (adds to PATH automatically)
+    
+    **Linux/macOS:** Download the archive, extract, and move to your PATH:
+    ```bash
+    tar xzf fogit_*.tar.gz
+    sudo mv fogit /usr/local/bin/
+    ```
+    
+    **Go Install:**
+    ```bash
+    go install github.com/eg3r/fogit@{{ .Version }}
+    ```
+    
+    **Update existing installation:**
+    ```bash
+    fogit self-update
+    ```
+
