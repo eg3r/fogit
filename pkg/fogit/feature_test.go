@@ -835,7 +835,7 @@ func TestFeature_ReopenFeature(t *testing.T) {
 			notes:         "Bug fix",
 			wantErr:       false,
 			wantVersion:   "2",
-			wantState:     StateInProgress,
+			wantState:     StateOpen, // Per spec: reopened features start in OPEN state
 		},
 		{
 			name: "reopen closed feature - semantic minor",
@@ -852,7 +852,7 @@ func TestFeature_ReopenFeature(t *testing.T) {
 			notes:         "Minor update",
 			wantErr:       false,
 			wantVersion:   "1.1.0",
-			wantState:     StateInProgress,
+			wantState:     StateOpen, // Per spec: reopened features start in OPEN state
 		},
 		{
 			name: "cannot reopen open feature",

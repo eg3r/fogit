@@ -459,10 +459,11 @@ func IncrementVersion(current string, format string, increment VersionIncrement)
 }
 
 // ReopenFeature reopens a closed feature with a new version
-// Per spec 08-interface.md:
+// Per spec 02-concepts.md and 06-data-model.md:
 // - Closes current version (sets ClosedAt)
 // - Creates new version with the provided version string
-// - Updates feature state to in-progress (reopened features have work)
+// - New version starts in OPEN state (created_at == modified_at)
+// - Transitions to in-progress after first commit/modification
 // Returns error if feature is not closed
 func (f *Feature) ReopenFeature(currentVersionStr string, newVersionStr string, branch string, notes string) error {
 	if f.DeriveState() != StateClosed {
@@ -479,15 +480,15 @@ func (f *Feature) ReopenFeature(currentVersionStr string, newVersionStr string, 
 	}
 
 	// Create new version entry
-	// Reopened features are in-progress (ModifiedAt > CreatedAt)
-	modifiedAt := now.Add(time.Nanosecond)
+	// Per spec: reopened features start in OPEN state (created_at == modified_at)
+	// They transition to in-progress after first commit updates modified_at
 	if f.Versions == nil {
 		f.Versions = make(map[string]*FeatureVersion)
 	}
 	f.Versions[newVersionStr] = &FeatureVersion{
 		CreatedAt:  now,
-		ModifiedAt: modifiedAt, // After created = in-progress state
-		ClosedAt:   nil,        // Open
+		ModifiedAt: now, // Same as created = open state
+		ClosedAt:   nil, // Not closed
 		Branch:     branch,
 		Notes:      notes,
 	}

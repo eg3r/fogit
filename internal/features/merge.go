@@ -203,18 +203,30 @@ func findFeaturesToClose(ctx context.Context, repo fogit.Repository, featureName
 		}
 		featuresToClose = append(featuresToClose, feature)
 	} else {
-		// Find all open features on current branch
-		filter := &fogit.Filter{
+		// Find all non-closed features (both open and in-progress) on current branch
+		// First try open features
+		openFilter := &fogit.Filter{
 			State: fogit.StateOpen,
 		}
-
-		features, err := repo.List(ctx, filter)
+		openFeatures, err := repo.List(ctx, openFilter)
 		if err != nil {
 			return nil, fmt.Errorf("failed to list features: %w", err)
 		}
 
+		// Then try in-progress features
+		inProgressFilter := &fogit.Filter{
+			State: fogit.StateInProgress,
+		}
+		inProgressFeatures, err := repo.List(ctx, inProgressFilter)
+		if err != nil {
+			return nil, fmt.Errorf("failed to list features: %w", err)
+		}
+
+		// Combine all non-closed features
+		allFeatures := append(openFeatures, inProgressFeatures...)
+
 		// Filter features on current branch or use most recent
-		for _, feature := range features {
+		for _, feature := range allFeatures {
 			if branchMeta, ok := feature.Metadata["branch"].(string); ok {
 				if branchMeta == branch {
 					featuresToClose = append(featuresToClose, feature)
@@ -223,8 +235,8 @@ func findFeaturesToClose(ctx context.Context, repo fogit.Repository, featureName
 		}
 
 		// If no features found with branch metadata, use most recently modified
-		if len(featuresToClose) == 0 && len(features) > 0 {
-			mostRecent := findMostRecentFeature(features)
+		if len(featuresToClose) == 0 && len(allFeatures) > 0 {
+			mostRecent := findMostRecentFeature(allFeatures)
 			if mostRecent != nil {
 				featuresToClose = append(featuresToClose, mostRecent)
 			}

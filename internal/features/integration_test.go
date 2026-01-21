@@ -242,9 +242,9 @@ func TestIntegration_MultiVersionWorkflow(t *testing.T) {
 		t.Errorf("Expected current version '2', got '%s'", feature.GetCurrentVersionKey())
 	}
 
-	// Verify state is in-progress (reopened features start in-progress per spec)
-	if feature.DeriveState() != fogit.StateInProgress {
-		t.Errorf("Expected in-progress state for reopened version, got %s", feature.DeriveState())
+	// Verify state is open (per spec: reopened features start in OPEN state, created_at == modified_at)
+	if feature.DeriveState() != fogit.StateOpen {
+		t.Errorf("Expected open state for reopened version, got %s", feature.DeriveState())
 	}
 
 	// Step 4: Verify version history
