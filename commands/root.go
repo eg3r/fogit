@@ -230,7 +230,10 @@ func init() {
 	// Global flags
 	rootCmd.PersistentFlags().StringVarP(&workDir, "directory", "C", "", "Run as if fogit was started in `<path>` instead of the current directory")
 	rootCmd.PersistentFlags().BoolVar(&debugMode, "debug", false, "Enable debug logging (shows all diagnostic messages)")
-	rootCmd.PersistentFlags().BoolVarP(&verboseMode, "verbose", "v", false, "Enable verbose output (shows info-level messages)")
+	rootCmd.PersistentFlags().BoolVar(&verboseMode, "verbose", false, "Enable verbose output (shows info-level messages)")
+
+	// Per spec: -v is shorthand for --version
+	rootCmd.Flags().BoolP("version", "v", false, "version for fogit")
 }
 
 // GetConfig returns the loaded global config (available to all commands)

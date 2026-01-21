@@ -21,7 +21,7 @@ var relationshipCategoriesCmd = &cobra.Command{
 }
 
 func init() {
-	relationshipCategoriesCmd.Flags().BoolVarP(&categoriesVerbose, "verbose", "v", false, "Show detailed settings (cycle detection, history tracking, etc.)")
+	relationshipCategoriesCmd.Flags().BoolVar(&categoriesVerbose, "verbose", false, "Show detailed settings (cycle detection, history tracking, etc.)")
 	rootCmd.AddCommand(relationshipCategoriesCmd)
 }
 

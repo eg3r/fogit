@@ -26,7 +26,7 @@ var relationshipTypesCmd = &cobra.Command{
 
 func init() {
 	relationshipTypesCmd.Flags().StringVarP(&typesCategory, "category", "c", "", "Filter by category (structural, informational, workflow, compliance)")
-	relationshipTypesCmd.Flags().BoolVarP(&typesVerbose, "verbose", "v", false, "Show detailed information (inverse, aliases, bidirectional)")
+	relationshipTypesCmd.Flags().BoolVar(&typesVerbose, "verbose", false, "Show detailed information (inverse, aliases, bidirectional)")
 	rootCmd.AddCommand(relationshipTypesCmd)
 }
 
