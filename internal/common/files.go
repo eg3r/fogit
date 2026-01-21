@@ -115,9 +115,15 @@ func ValidateOutputPath(outputPath string) error {
 	// We add a separator to prevent prefix matching issues
 	// e.g., /home/user/project vs /home/user/project-other
 	cwdWithSep := cwd + string(filepath.Separator)
-	if !strings.HasPrefix(absPath, cwdWithSep) && absPath != cwd {
+
+	// Use case-insensitive comparison on Windows
+	absPathLower := strings.ToLower(absPath)
+	cwdWithSepLower := strings.ToLower(cwdWithSep)
+	cwdLower := strings.ToLower(cwd)
+
+	if !strings.HasPrefix(absPathLower, cwdWithSepLower) && absPathLower != cwdLower {
 		// Also allow files directly in cwd (not in subdirectory)
-		if filepath.Dir(absPath) != cwd {
+		if strings.ToLower(filepath.Dir(absPath)) != cwdLower {
 			return fmt.Errorf("output path must be within current directory: %s is outside %s", absPath, cwd)
 		}
 	}
