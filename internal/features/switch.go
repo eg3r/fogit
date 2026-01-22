@@ -4,8 +4,10 @@ package features
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/eg3r/fogit/internal/git"
+	"github.com/eg3r/fogit/internal/search"
 	"github.com/eg3r/fogit/pkg/fogit"
 )
 
@@ -17,27 +19,55 @@ type SwitchOptions struct {
 
 // SwitchResult contains the result of a switch operation
 type SwitchResult struct {
-	Feature         *fogit.Feature
-	PreviousBranch  string
-	TargetBranch    string
-	AlreadyOnBranch bool
-	IsTrunkBased    bool
+	Feature            *fogit.Feature
+	PreviousBranch     string
+	TargetBranch       string
+	AlreadyOnBranch    bool
+	IsTrunkBased       bool
+	FoundOnOtherBranch string         // Non-empty if feature was found on a different branch
+	Suggestions        []search.Match // Fuzzy match suggestions if not found
 }
 
 // Switch switches to a feature's branch (branch-per-feature mode)
 // or sets the active feature context (trunk-based mode)
+// Per spec: Uses cross-branch discovery to find features on other branches
 func Switch(ctx context.Context, repo fogit.Repository, gitRepo *git.Repository, cfg *fogit.Config, opts SwitchOptions) (*SwitchResult, error) {
-	// Find feature
+	var feature *fogit.Feature
+	var foundOnBranch string
+
+	// First, try to find locally on current branch
 	findResult, err := Find(ctx, repo, opts.Identifier, cfg)
 	if err != nil {
-		return &SwitchResult{}, err
-	}
-	feature := findResult.Feature
+		// Not found locally - try cross-branch discovery
+		// Per spec/specification/07-git-integration.md#cross-branch-feature-discovery
+		crossResult, crossErr := FindAcrossBranches(ctx, repo, gitRepo, opts.Identifier, cfg)
+		if crossErr != nil {
+			// Collect suggestions for better error messages
+			var suggestions []search.Match
+			if crossResult != nil && len(crossResult.Suggestions) > 0 {
+				suggestions = crossResult.Suggestions
+			} else if findResult != nil && len(findResult.Suggestions) > 0 {
+				suggestions = findResult.Suggestions
+			}
+			return &SwitchResult{Suggestions: suggestions}, err
+		}
 
-	// Check feature state
+		if crossResult.IsRemote {
+			return nil, fmt.Errorf("feature '%s' found on remote branch '%s'. Run 'git fetch' and 'git checkout %s' first",
+				opts.Identifier, crossResult.Branch, extractLocalBranchNameSwitch(crossResult.Branch))
+		}
+
+		feature = crossResult.Feature
+		foundOnBranch = crossResult.Branch
+	} else {
+		feature = findResult.Feature
+	}
+
+	// Check feature state - can only switch to open features
+	// Closed features need to be reopened with 'fogit feature <name> --new-version'
 	state := feature.DeriveState()
 	if state == fogit.StateClosed {
-		return nil, fmt.Errorf("cannot switch to closed feature '%s'. Use 'fogit feature %s' to reopen it with a new version", feature.Name, feature.Name)
+		return nil, fmt.Errorf("cannot switch to closed feature '%s'. Use 'fogit feature %s --new-version' to reopen it", feature.Name, feature.Name)
 	}
 
 	// Handle trunk-based mode
@@ -49,7 +79,27 @@ func Switch(ctx context.Context, repo fogit.Repository, gitRepo *git.Repository,
 	}
 
 	// Branch-per-feature mode
-	return switchToBranch(feature, gitRepo)
+	result, err := switchToBranch(feature, gitRepo)
+	if err != nil {
+		return nil, err
+	}
+
+	// Include cross-branch info if feature was found on another branch
+	if foundOnBranch != "" {
+		result.FoundOnOtherBranch = foundOnBranch
+	}
+
+	return result, nil
+}
+
+// extractLocalBranchNameSwitch extracts the local branch name from a remote branch reference
+// e.g., "origin/feature/auth" -> "feature/auth"
+func extractLocalBranchNameSwitch(remoteBranch string) string {
+	parts := strings.SplitN(remoteBranch, "/", 2)
+	if len(parts) >= 2 {
+		return parts[1]
+	}
+	return remoteBranch
 }
 
 // switchToBranch handles the git branch switching logic

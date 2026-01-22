@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -23,6 +24,25 @@ var (
 	ErrTagExists       = errors.New("tag already exists")
 	ErrTagNotFound     = errors.New("tag not found")
 )
+
+// gitRefPattern validates git ref names (branches, tags)
+// Disallows shell metacharacters and control characters
+var gitRefPattern = regexp.MustCompile(`^[a-zA-Z0-9/_.-]+$`)
+
+// isValidGitRef validates a git ref name to prevent command injection
+func isValidGitRef(ref string) bool {
+	if ref == "" || len(ref) > 255 {
+		return false
+	}
+	// Check for dangerous patterns
+	if strings.HasPrefix(ref, "-") || strings.HasPrefix(ref, ".") {
+		return false
+	}
+	if strings.Contains(ref, "..") || strings.Contains(ref, "~") || strings.Contains(ref, "^") {
+		return false
+	}
+	return gitRefPattern.MatchString(ref)
+}
 
 // Repository wraps go-git repository operations
 type Repository struct {
@@ -735,4 +755,180 @@ func (r *Repository) GetTag(name string) (*TagInfo, error) {
 		Date:    tagObj.Tagger.When,
 		IsLight: false,
 	}, nil
+}
+
+// ============================================================================
+// Cross-Branch Feature Discovery Methods
+// Per spec/specification/07-git-integration.md#cross-branch-feature-discovery
+// ============================================================================
+
+var (
+	ErrBranchNotFound = errors.New("branch not found")
+	ErrFileNotFound   = errors.New("file not found on branch")
+)
+
+// ListBranches returns all local branch names
+func (r *Repository) ListBranches() ([]string, error) {
+	branches, err := r.repo.Branches()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list branches: %w", err)
+	}
+
+	var names []string
+	err = branches.ForEach(func(ref *plumbing.Reference) error {
+		names = append(names, ref.Name().Short())
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to iterate branches: %w", err)
+	}
+
+	return names, nil
+}
+
+// ListRemoteBranches returns all remote tracking branch names
+// Returns branch names in format "origin/branch-name"
+func (r *Repository) ListRemoteBranches() ([]string, error) {
+	refs, err := r.repo.References()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get references: %w", err)
+	}
+
+	var names []string
+	err = refs.ForEach(func(ref *plumbing.Reference) error {
+		if ref.Name().IsRemote() {
+			names = append(names, ref.Name().Short())
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to iterate references: %w", err)
+	}
+
+	return names, nil
+}
+
+// ListFilesOnBranch lists files in a path on a specific branch without checkout.
+// Uses: git ls-tree -r --name-only <branch> -- <path>
+// Returns relative paths of files found under the given path.
+func (r *Repository) ListFilesOnBranch(branch, path string) ([]string, error) {
+	cmd := exec.Command("git", "ls-tree", "-r", "--name-only", branch, "--", path)
+	cmd.Dir = r.path
+
+	output, err := cmd.Output()
+	if err != nil {
+		// Check if it's an exit error with specific message
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			stderr := strings.TrimSpace(string(exitErr.Stderr))
+			if strings.Contains(stderr, "Not a valid object name") ||
+				strings.Contains(stderr, "not a tree object") {
+				return nil, ErrBranchNotFound
+			}
+		}
+		return nil, fmt.Errorf("failed to list files on branch %s: %w", branch, err)
+	}
+
+	outputStr := strings.TrimSpace(string(output))
+	if outputStr == "" {
+		return []string{}, nil
+	}
+
+	files := strings.Split(outputStr, "\n")
+	return files, nil
+}
+
+// ReadFileOnBranch reads a file from a specific branch without checkout.
+// Uses: git show <branch>:<path>
+func (r *Repository) ReadFileOnBranch(branch, path string) ([]byte, error) {
+	// Validate branch name to prevent command injection
+	if !isValidGitRef(branch) {
+		return nil, fmt.Errorf("invalid branch name: %s", branch)
+	}
+
+	// Normalize path separators for git (always use forward slashes)
+	normalizedPath := strings.ReplaceAll(path, "\\", "/")
+
+	// Validate path to prevent traversal attacks
+	if strings.Contains(normalizedPath, "..") {
+		return nil, fmt.Errorf("invalid path: contains parent directory reference")
+	}
+
+	// Build the git show argument safely
+	refSpec := fmt.Sprintf("%s:%s", branch, normalizedPath)
+	cmd := exec.Command("git", "show", refSpec) // #nosec G204 - inputs validated above
+	cmd.Dir = r.path
+
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		outputStr := strings.ToLower(string(output))
+		// Check for file not found errors
+		if strings.Contains(outputStr, "does not exist") ||
+			strings.Contains(outputStr, "path") && strings.Contains(outputStr, "exist") ||
+			strings.Contains(outputStr, "exists on disk, but not in") {
+			return nil, ErrFileNotFound
+		}
+		// Check for branch not found errors
+		if strings.Contains(outputStr, "not a valid object name") ||
+			strings.Contains(outputStr, "invalid object name") ||
+			strings.Contains(outputStr, "unknown revision") ||
+			strings.Contains(outputStr, "bad revision") {
+			return nil, ErrBranchNotFound
+		}
+		return nil, fmt.Errorf("failed to read file %s on branch %s: %w", path, branch, err)
+	}
+
+	return output, nil
+}
+
+// GetTrunkBranch returns the main/master branch name.
+// Checks for existence of common trunk branch names in order: main, master.
+// Falls back to "main" if neither exists.
+func (r *Repository) GetTrunkBranch() (string, error) {
+	branches, err := r.ListBranches()
+	if err != nil {
+		return "", err
+	}
+
+	// Check for common trunk branch names
+	trunkCandidates := []string{"main", "master"}
+	branchSet := make(map[string]bool)
+	for _, b := range branches {
+		branchSet[b] = true
+	}
+
+	for _, candidate := range trunkCandidates {
+		if branchSet[candidate] {
+			return candidate, nil
+		}
+	}
+
+	// Check remote branches as fallback
+	remoteBranches, err := r.ListRemoteBranches()
+	if err == nil {
+		for _, candidate := range trunkCandidates {
+			for _, remote := range remoteBranches {
+				if strings.HasSuffix(remote, "/"+candidate) {
+					return candidate, nil
+				}
+			}
+		}
+	}
+
+	// Default to "main" if nothing found
+	return "main", nil
+}
+
+// BranchExists checks if a branch exists locally
+func (r *Repository) BranchExists(name string) bool {
+	refName := plumbing.NewBranchReferenceName(name)
+	_, err := r.repo.Reference(refName, true)
+	return err == nil
+}
+
+// RemoteBranchExists checks if a remote branch exists
+func (r *Repository) RemoteBranchExists(remoteBranch string) bool {
+	// remoteBranch should be in format "origin/branch-name"
+	refName := plumbing.NewRemoteReferenceName("origin", strings.TrimPrefix(remoteBranch, "origin/"))
+	_, err := r.repo.Reference(refName, true)
+	return err == nil
 }

@@ -70,11 +70,13 @@ func runSwitch(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		// Handle suggestions for not found
 		if err == fogit.ErrNotFound {
-			findResult, _ := features.Find(cmd.Context(), cmdCtx.Repo, identifier, cmdCtx.Config)
-			if findResult != nil && len(findResult.Suggestions) > 0 {
-				fmt.Fprintf(os.Stdout, "Feature '%s' not found.\n\nDid you mean:\n", identifier)
-				for _, s := range findResult.Suggestions {
-					fmt.Fprintf(os.Stdout, "  fogit switch %s\n", s.Feature.ID)
+			fmt.Fprintf(os.Stdout, "Feature '%s' not found.\n", identifier)
+
+			// Check for suggestions from the switch result
+			if result != nil && len(result.Suggestions) > 0 {
+				fmt.Fprintf(os.Stdout, "\nDid you mean:\n")
+				for _, s := range result.Suggestions {
+					fmt.Fprintf(os.Stdout, "  fogit switch \"%s\" (ID: %s)\n", s.Feature.Name, s.Feature.ID)
 				}
 			}
 			return fmt.Errorf("feature not found")
@@ -100,6 +102,11 @@ func printSwitchResult(result *features.SwitchResult) {
 	if result.AlreadyOnBranch {
 		fmt.Printf("Already on feature '%s' (branch: %s)\n", result.Feature.Name, result.TargetBranch)
 		return
+	}
+
+	// Show cross-branch discovery info if feature was found on another branch
+	if result.FoundOnOtherBranch != "" {
+		fmt.Printf("Feature '%s' found on branch: %s\n", result.Feature.Name, result.FoundOnOtherBranch)
 	}
 
 	fmt.Printf("Switched to feature: %s\n", result.Feature.Name)
