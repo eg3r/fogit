@@ -9,12 +9,15 @@ import (
 
 	"github.com/eg3r/fogit/internal/logger"
 	"github.com/eg3r/fogit/internal/setup"
+	"github.com/eg3r/fogit/pkg/fogit"
 )
 
 var initCmd = &cobra.Command{
 	Use:   "init",
 	Short: "Initialize FoGit repository",
 	Long: `Initialize a FoGit repository in the current directory.
+
+Requires a Git repository (run 'git init' first if needed).
 
 Creates the .fogit directory structure:
   .fogit/
@@ -26,21 +29,16 @@ Examples:
   fogit init
 
   # Initialize without Git hooks
-  fogit init --no-hooks
-
-  # Initialize without Git integration
-  fogit init --no-git`,
+  fogit init --no-hooks`,
 	RunE: runInit,
 }
 
 var (
-	initNoGit    bool
 	initNoHooks  bool
 	initTemplate string
 )
 
 func init() {
-	initCmd.Flags().BoolVar(&initNoGit, "no-git", false, "Skip Git integration")
 	initCmd.Flags().BoolVar(&initNoHooks, "no-hooks", false, "Skip Git hook installation")
 	initCmd.Flags().StringVar(&initTemplate, "template", "", "Use configuration template")
 	rootCmd.AddCommand(initCmd)
@@ -51,6 +49,14 @@ func runInit(cmd *cobra.Command, args []string) error {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("failed to get current directory: %w", err)
+	}
+
+	// Check if we're in a Git repository (required per spec)
+	if _, err := os.Stat(filepath.Join(cwd, ".git")); os.IsNotExist(err) {
+		return fogit.NewExitCodeError(
+			fmt.Errorf("not a Git repository. Run 'git init' first to create a Git repository"),
+			fogit.ExitGitError,
+		)
 	}
 
 	if err := setup.InitializeRepository(cwd); err != nil {
@@ -66,18 +72,8 @@ func runInit(cmd *cobra.Command, args []string) error {
 	fmt.Println("    config.yml   - Repository configuration")
 	fmt.Println("    .gitignore   - Ignore patterns")
 
-	// Check if we're in a Git repository
-	isGitRepo := false
-	if _, err := os.Stat(filepath.Join(cwd, ".git")); err == nil {
-		isGitRepo = true
-	}
-
-	if !initNoGit && !isGitRepo {
-		fmt.Println("\nNote: Not in a Git repository. Run 'git init' to enable Git integration.")
-	}
-
-	// Install Git hooks by default (unless --no-hooks or not a Git repo)
-	if !initNoHooks && isGitRepo {
+	// Install Git hooks by default (unless --no-hooks)
+	if !initNoHooks {
 		fmt.Println()
 		if err := installGitHooks(cwd); err != nil {
 			logger.Warn("failed to install Git hooks", "error", err)

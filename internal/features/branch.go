@@ -95,6 +95,9 @@ func HandleBranchCreation(featureName string, cfg *fogit.Config, sameBranch, iso
 			if err == git.ErrBranchExists {
 				return fmt.Errorf("branch %s already exists. Use --same to create feature on current branch", branchName)
 			}
+			if err == git.ErrEmptyRepository {
+				return fmt.Errorf("Git repository has no commits. Make an initial commit first:\n  git commit --allow-empty -m \"Initial commit\"")
+			}
 			return fmt.Errorf("failed to create branch: %w", err)
 		}
 

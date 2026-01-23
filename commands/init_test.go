@@ -2,6 +2,7 @@ package commands
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -13,6 +14,13 @@ import (
 func TestInitCommand(t *testing.T) {
 	// Create temp directory
 	tmpDir := t.TempDir()
+
+	// Initialize Git repository first (required)
+	gitCmd := exec.Command("git", "init")
+	gitCmd.Dir = tmpDir
+	if err := gitCmd.Run(); err != nil {
+		t.Fatalf("git init failed: %v", err)
+	}
 
 	// Reset flags and run with -C flag
 	ResetFlags()
@@ -72,6 +80,13 @@ func TestInitCommand(t *testing.T) {
 func TestInitAlreadyInitialized(t *testing.T) {
 	tmpDir := t.TempDir()
 
+	// Initialize Git repository first (required)
+	gitCmd := exec.Command("git", "init")
+	gitCmd.Dir = tmpDir
+	if err := gitCmd.Run(); err != nil {
+		t.Fatalf("git init failed: %v", err)
+	}
+
 	// Initialize first time
 	ResetFlags()
 	rootCmd.SetArgs([]string{"-C", tmpDir, "init"})
@@ -96,6 +111,13 @@ func TestInitAlreadyInitialized(t *testing.T) {
 
 func TestInitCreatesValidConfig(t *testing.T) {
 	tmpDir := t.TempDir()
+
+	// Initialize Git repository first (required)
+	gitCmd := exec.Command("git", "init")
+	gitCmd.Dir = tmpDir
+	if err := gitCmd.Run(); err != nil {
+		t.Fatalf("git init failed: %v", err)
+	}
 
 	// Reset flags and run with -C flag
 	ResetFlags()
@@ -154,6 +176,13 @@ func TestInitCreatesValidConfig(t *testing.T) {
 func TestInitDirectoryPermissions(t *testing.T) {
 	tmpDir := t.TempDir()
 
+	// Initialize Git repository first (required)
+	gitCmd := exec.Command("git", "init")
+	gitCmd.Dir = tmpDir
+	if err := gitCmd.Run(); err != nil {
+		t.Fatalf("git init failed: %v", err)
+	}
+
 	// Reset flags and run with -C flag
 	ResetFlags()
 	rootCmd.SetArgs([]string{"-C", tmpDir, "init"})
@@ -182,6 +211,13 @@ func TestInitDirectoryPermissions(t *testing.T) {
 
 func TestInitConfigMatchesDefault(t *testing.T) {
 	tmpDir := t.TempDir()
+
+	// Initialize Git repository first (required)
+	gitCmd := exec.Command("git", "init")
+	gitCmd.Dir = tmpDir
+	if err := gitCmd.Run(); err != nil {
+		t.Fatalf("git init failed: %v", err)
+	}
 
 	// Reset flags and run with -C flag
 	ResetFlags()
@@ -227,6 +263,13 @@ func TestInitInSubdirectory(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Initialize Git repository in subdirectory (required)
+	gitCmd := exec.Command("git", "init")
+	gitCmd.Dir = subDir
+	if err := gitCmd.Run(); err != nil {
+		t.Fatalf("git init failed: %v", err)
+	}
+
 	// Reset flags and run with -C flag pointing to subdirectory
 	ResetFlags()
 	rootCmd.SetArgs([]string{"-C", subDir, "init"})
@@ -256,6 +299,13 @@ func TestInitWithSpecialCharactersInPath(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Initialize Git repository (required)
+	gitCmd := exec.Command("git", "init")
+	gitCmd.Dir = specialDir
+	if err := gitCmd.Run(); err != nil {
+		t.Fatalf("git init failed: %v", err)
+	}
+
 	// Reset flags and run with -C flag
 	ResetFlags()
 	rootCmd.SetArgs([]string{"-C", specialDir, "init"})
@@ -267,5 +317,40 @@ func TestInitWithSpecialCharactersInPath(t *testing.T) {
 	fogitDir := filepath.Join(specialDir, ".fogit")
 	if _, err := os.Stat(fogitDir); os.IsNotExist(err) {
 		t.Error(".fogit not created in directory with special characters")
+	}
+}
+
+func TestInitFailsWithoutGitRepository(t *testing.T) {
+	// Create temp directory WITHOUT git init
+	tmpDir := t.TempDir()
+
+	// Reset flags and run with -C flag
+	ResetFlags()
+	rootCmd.SetArgs([]string{"-C", tmpDir, "init"})
+	err := ExecuteRootCmd()
+
+	// Should fail
+	if err == nil {
+		t.Fatal("init should fail when not in a Git repository")
+	}
+
+	// Check error message
+	if !strings.Contains(err.Error(), "not a Git repository") {
+		t.Errorf("unexpected error message: %v", err)
+	}
+
+	// Check exit code is 6 (Git integration error)
+	if exitErr, ok := err.(*fogit.ExitCodeError); ok {
+		if exitErr.ExitCode != fogit.ExitGitError {
+			t.Errorf("exit code = %d, want %d", exitErr.ExitCode, fogit.ExitGitError)
+		}
+	} else {
+		t.Error("expected fogit.ExitCodeError type")
+	}
+
+	// Verify .fogit was NOT created
+	fogitDir := filepath.Join(tmpDir, ".fogit")
+	if _, err := os.Stat(fogitDir); err == nil {
+		t.Error(".fogit should not be created when Git repository is missing")
 	}
 }

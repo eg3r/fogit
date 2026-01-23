@@ -18,6 +18,7 @@ import (
 var (
 	ErrNotGitRepo      = errors.New("not a git repository")
 	ErrNoCommits       = errors.New("no commits found")
+	ErrEmptyRepository = errors.New("repository has no commits")
 	ErrBranchExists    = errors.New("branch already exists")
 	ErrNothingToCommit = errors.New("nothing to commit")
 	ErrNoRemote        = errors.New("no remote configured")
@@ -116,6 +117,10 @@ func (r *Repository) GetAuthorsForFile(filepath string) ([]string, error) {
 func (r *Repository) CreateBranch(name string) error {
 	head, err := r.repo.Head()
 	if err != nil {
+		// Check if this is an empty repository (no commits yet)
+		if err.Error() == "reference not found" {
+			return ErrEmptyRepository
+		}
 		return fmt.Errorf("failed to get HEAD: %w", err)
 	}
 
