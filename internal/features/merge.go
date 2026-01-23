@@ -87,6 +87,12 @@ func Merge(ctx context.Context, repo fogit.Repository, gitRepo *git.Repository, 
 	result.Branch = branch
 	result.IsMainBranch = isMainBranch(branch)
 
+	// Validate base branch exists BEFORE making any changes (atomic operation)
+	// This prevents closing features when merge target doesn't exist
+	if !result.IsMainBranch && !gitRepo.BranchExists(opts.BaseBranch) {
+		return nil, fmt.Errorf("target branch '%s' does not exist. Configure with:\n  fogit config set workflow.base_branch <branch_name>\nor create it with:\n  git branch %s", opts.BaseBranch, opts.BaseBranch)
+	}
+
 	// Find features to close
 	featuresToClose, err := findFeaturesToClose(ctx, repo, opts.FeatureName, branch)
 	if err != nil {
