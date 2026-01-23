@@ -59,6 +59,13 @@ func TestIntegration_FeatureLifecycleWithRelationships(t *testing.T) {
 	if rel == nil {
 		t.Fatal("Link returned nil relationship")
 	}
+	// Verify relationship has proper ID and timestamp (regression test for empty ID bug)
+	if rel.ID == "" {
+		t.Error("Link returned relationship with empty ID")
+	}
+	if rel.CreatedAt.IsZero() {
+		t.Error("Link returned relationship with zero CreatedAt")
+	}
 
 	// Step 4: Verify relationship was created
 	loginFeature, err = env.Repository.Get(ctx, loginFeature.ID)

@@ -45,10 +45,12 @@ func BuildVersion() string {
 }
 
 var rootCmd = &cobra.Command{
-	Use:     "fogit",
-	Short:   "FoGit (feature oriented git)",
-	Long:    `FoGit (feature oriented git) - Git-native feature tracking system`,
-	Version: Version,
+	Use:           "fogit",
+	Short:         "FoGit (feature oriented git)",
+	Long:          `FoGit (feature oriented git) - Git-native feature tracking system`,
+	Version:       Version,
+	SilenceUsage:  true, // Don't print usage on error - we handle this ourselves
+	SilenceErrors: true, // Don't print errors - main.go handles error output
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		// Handle -C flag: resolve and change to specified directory
 		if workDir != "" {

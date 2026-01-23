@@ -58,6 +58,21 @@ func runFogit(t *testing.T, dir string, args ...string) (string, error) {
 	return output, err
 }
 
+// getBaseBranch returns the current git branch name (usually 'main' or 'master')
+func getBaseBranch(t *testing.T, dir string) string {
+	t.Helper()
+	cmd := exec.Command("git", "branch", "--show-current")
+	cmd.Dir = dir
+	out, err := cmd.Output()
+	if err != nil {
+		// Fallback: try rev-parse for detached HEAD or older git
+		cmd = exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+		cmd.Dir = dir
+		out, _ = cmd.Output()
+	}
+	return strings.TrimSpace(string(out))
+}
+
 // TestEndToEndFeatureWorkflow tests the complete fogit workflow:
 // 1. Create a new project folder
 // 2. Initialize git and fogit

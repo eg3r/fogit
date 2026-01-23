@@ -212,6 +212,75 @@ func (r *mockRepository) GetByName(ctx context.Context, name string) (*fogit.Fea
 	return nil, fogit.ErrNotFound
 }
 
+// TestLink_ReturnsProperIDAndTimestamp verifies that Link() creates relationships with
+// proper ID and CreatedAt values (regression test for bug where struct literal was used
+// instead of NewRelationship, resulting in empty ID and zero timestamp)
+func TestLink_ReturnsProperIDAndTimestamp(t *testing.T) {
+	// Setup: create temp directory and repository
+	tempDir := t.TempDir()
+	fogitDir := filepath.Join(tempDir, ".fogit")
+	if err := os.MkdirAll(filepath.Join(fogitDir, "features"), 0755); err != nil {
+		t.Fatalf("Failed to create fogit directory: %v", err)
+	}
+
+	repo := storage.NewFileRepository(fogitDir)
+
+	ctx := context.Background()
+	cfg := fogit.DefaultConfig()
+
+	// Create source and target features
+	source := fogit.NewFeature("Source Feature")
+	target := fogit.NewFeature("Target Feature")
+	if err := repo.Create(ctx, source); err != nil {
+		t.Fatalf("Failed to create source: %v", err)
+	}
+	if err := repo.Create(ctx, target); err != nil {
+		t.Fatalf("Failed to create target: %v", err)
+	}
+
+	// Create relationship using Link
+	rel, err := Link(ctx, repo, source, target, "related-to", "Test relationship", "", cfg, fogitDir)
+	if err != nil {
+		t.Fatalf("Link() error = %v", err)
+	}
+
+	// CRITICAL: Verify ID is set (was empty before fix)
+	if rel.ID == "" {
+		t.Error("Link() returned relationship with empty ID - this is a regression!")
+	}
+
+	// CRITICAL: Verify CreatedAt is set (was zero before fix)
+	if rel.CreatedAt.IsZero() {
+		t.Error("Link() returned relationship with zero CreatedAt - this is a regression!")
+	}
+
+	// Verify ID looks like a UUID (36 chars with dashes)
+	if len(rel.ID) != 36 {
+		t.Errorf("Link() returned relationship with invalid ID length: got %d, want 36", len(rel.ID))
+	}
+
+	// Verify the relationship was properly stored in the feature
+	source, err = repo.Get(ctx, source.ID)
+	if err != nil {
+		t.Fatalf("Failed to reload source: %v", err)
+	}
+
+	if len(source.Relationships) == 0 {
+		t.Fatal("No relationships stored on source feature")
+	}
+
+	storedRel := source.Relationships[0]
+	if storedRel.ID == "" {
+		t.Error("Stored relationship has empty ID")
+	}
+	if storedRel.CreatedAt.IsZero() {
+		t.Error("Stored relationship has zero CreatedAt")
+	}
+	if storedRel.ID != rel.ID {
+		t.Errorf("Stored relationship ID mismatch: got %s, want %s", storedRel.ID, rel.ID)
+	}
+}
+
 // TestFindIncomingRelationships tests the basic function that finds incoming relationships
 func TestFindIncomingRelationships(t *testing.T) {
 	ctx := context.Background()

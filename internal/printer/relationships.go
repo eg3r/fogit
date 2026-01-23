@@ -28,7 +28,15 @@ func OutputRelationshipsText(w io.Writer, feature *fogit.Feature, outgoing []fog
 				targetName = rel.TargetID
 			}
 
-			fmt.Fprintf(w, "  [%s] %s -> %s\n", rel.ID[:8], rel.Type, targetName)
+			// Safely format ID (may be empty)
+			relID := rel.ID
+			if len(relID) >= 8 {
+				relID = relID[:8]
+			} else if relID == "" {
+				relID = "n/a"
+			}
+
+			fmt.Fprintf(w, "  [%s] %s -> %s\n", relID, rel.Type, targetName)
 			if rel.Description != "" {
 				fmt.Fprintf(w, "    Description: %s\n", rel.Description)
 			}
@@ -41,7 +49,15 @@ func OutputRelationshipsText(w io.Writer, feature *fogit.Feature, outgoing []fog
 		fmt.Fprintln(w, "Incoming:")
 		fmt.Fprintln(w, strings.Repeat("-", 80))
 		for _, rel := range incoming {
-			fmt.Fprintf(w, "  [%s] %s <- %s\n", rel.Relation.ID[:8], rel.Relation.Type, rel.SourceName)
+			// Safely format ID (may be empty)
+			relID := rel.Relation.ID
+			if len(relID) >= 8 {
+				relID = relID[:8]
+			} else if relID == "" {
+				relID = "n/a"
+			}
+
+			fmt.Fprintf(w, "  [%s] %s <- %s\n", relID, rel.Relation.Type, rel.SourceName)
 			if rel.Relation.Description != "" {
 				fmt.Fprintf(w, "    Description: %s\n", rel.Relation.Description)
 			}

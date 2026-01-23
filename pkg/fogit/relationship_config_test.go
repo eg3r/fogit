@@ -4,7 +4,66 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 )
+
+// TestNewRelationship verifies that the factory function properly initializes all fields
+func TestNewRelationship(t *testing.T) {
+	beforeCreate := time.Now().UTC().Add(-time.Second) // Allow for clock skew
+
+	rel := NewRelationship("depends-on", "target-123", "Target Feature")
+
+	afterCreate := time.Now().UTC().Add(time.Second)
+
+	// Verify ID is set and looks like a UUID
+	if rel.ID == "" {
+		t.Error("NewRelationship() returned empty ID")
+	}
+	if len(rel.ID) != 36 {
+		t.Errorf("NewRelationship() ID length = %d, want 36 (UUID format)", len(rel.ID))
+	}
+
+	// Verify CreatedAt is set and reasonable
+	if rel.CreatedAt.IsZero() {
+		t.Error("NewRelationship() returned zero CreatedAt")
+	}
+	if rel.CreatedAt.Before(beforeCreate) || rel.CreatedAt.After(afterCreate) {
+		t.Errorf("NewRelationship() CreatedAt = %v, want between %v and %v",
+			rel.CreatedAt, beforeCreate, afterCreate)
+	}
+
+	// Verify other fields are set correctly
+	if rel.Type != "depends-on" {
+		t.Errorf("NewRelationship() Type = %v, want depends-on", rel.Type)
+	}
+	if rel.TargetID != "target-123" {
+		t.Errorf("NewRelationship() TargetID = %v, want target-123", rel.TargetID)
+	}
+	if rel.TargetName != "Target Feature" {
+		t.Errorf("NewRelationship() TargetName = %v, want Target Feature", rel.TargetName)
+	}
+
+	// Verify optional fields are zero/nil
+	if rel.Description != "" {
+		t.Errorf("NewRelationship() Description = %v, want empty", rel.Description)
+	}
+	if rel.VersionConstraint != nil {
+		t.Errorf("NewRelationship() VersionConstraint = %v, want nil", rel.VersionConstraint)
+	}
+}
+
+// TestNewRelationship_UniqueIDs verifies each call generates a unique ID
+func TestNewRelationship_UniqueIDs(t *testing.T) {
+	ids := make(map[string]bool)
+
+	for i := 0; i < 100; i++ {
+		rel := NewRelationship("depends-on", "target", "Target")
+		if ids[rel.ID] {
+			t.Errorf("NewRelationship() generated duplicate ID: %s", rel.ID)
+		}
+		ids[rel.ID] = true
+	}
+}
 
 func TestRelationship_ValidateWithConfig(t *testing.T) {
 	cfg := DefaultConfig()

@@ -132,14 +132,10 @@ func Link(ctx context.Context, repo fogit.Repository, source, target *fogit.Feat
 		}
 	}
 
-	// Create relationship object for validation and cycle detection
-	rel := fogit.Relationship{
-		Type:              relType,
-		TargetID:          target.ID,
-		TargetName:        target.Name,
-		Description:       description,
-		VersionConstraint: vc,
-	}
+	// Create relationship object using NewRelationship to ensure ID and CreatedAt are set
+	rel := fogit.NewRelationship(relType, target.ID, target.Name)
+	rel.Description = description
+	rel.VersionConstraint = vc
 
 	// Validate relationship against config
 	if err := rel.ValidateWithConfig(cfg); err != nil {

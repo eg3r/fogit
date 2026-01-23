@@ -442,6 +442,52 @@ func TestFeature_AddRelationship(t *testing.T) {
 	}
 }
 
+// TestFeature_AddRelationship_PreservesFields verifies that AddRelationship preserves
+// all fields including ID and CreatedAt (regression test)
+func TestFeature_AddRelationship_PreservesFields(t *testing.T) {
+	feature := NewFeature("Test")
+
+	// Create relationship using NewRelationship (the proper way)
+	rel := NewRelationship("depends-on", "target-123", "Target Feature")
+	rel.Description = "Test description"
+
+	originalID := rel.ID
+	originalCreatedAt := rel.CreatedAt
+
+	err := feature.AddRelationship(rel)
+	if err != nil {
+		t.Fatalf("AddRelationship() failed: %v", err)
+	}
+
+	// Verify the stored relationship has all fields preserved
+	stored := feature.Relationships[0]
+
+	if stored.ID != originalID {
+		t.Errorf("AddRelationship() changed ID: got %v, want %v", stored.ID, originalID)
+	}
+	if stored.ID == "" {
+		t.Error("AddRelationship() stored relationship with empty ID")
+	}
+	if !stored.CreatedAt.Equal(originalCreatedAt) {
+		t.Errorf("AddRelationship() changed CreatedAt: got %v, want %v", stored.CreatedAt, originalCreatedAt)
+	}
+	if stored.CreatedAt.IsZero() {
+		t.Error("AddRelationship() stored relationship with zero CreatedAt")
+	}
+	if stored.Type != rel.Type {
+		t.Errorf("AddRelationship() changed Type: got %v, want %v", stored.Type, rel.Type)
+	}
+	if stored.TargetID != rel.TargetID {
+		t.Errorf("AddRelationship() changed TargetID: got %v, want %v", stored.TargetID, rel.TargetID)
+	}
+	if stored.TargetName != rel.TargetName {
+		t.Errorf("AddRelationship() changed TargetName: got %v, want %v", stored.TargetName, rel.TargetName)
+	}
+	if stored.Description != rel.Description {
+		t.Errorf("AddRelationship() changed Description: got %v, want %v", stored.Description, rel.Description)
+	}
+}
+
 func TestFeature_AddRelationshipDuplicate(t *testing.T) {
 	feature := NewFeature("Test")
 	rel := Relationship{

@@ -196,12 +196,18 @@ func findFeaturesToClose(ctx context.Context, repo fogit.Repository, featureName
 	var featuresToClose []*fogit.Feature
 
 	if featureName != "" {
-		// Close specific feature
-		feature, err := repo.Get(ctx, featureName)
+		// Close specific feature - use Find to support both ID and name lookup
+		// Use a default config for searching (no fuzzy matching for explicit lookups)
+		cfg := &fogit.Config{
+			FeatureSearch: fogit.FeatureSearchConfig{
+				FuzzyMatch: false,
+			},
+		}
+		result, err := Find(ctx, repo, featureName, cfg)
 		if err != nil {
 			return nil, fmt.Errorf("feature not found: %w", err)
 		}
-		featuresToClose = append(featuresToClose, feature)
+		featuresToClose = append(featuresToClose, result.Feature)
 	} else {
 		// Find all non-closed features (both open and in-progress) on current branch
 		// First try open features

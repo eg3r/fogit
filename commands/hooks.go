@@ -56,10 +56,15 @@ var hookTemplates = map[string]string{
 	"pre-commit": `#!/bin/sh
 %s
 # FoGit pre-commit hook: validate features before commit
-fogit validate --quiet 2>/dev/null
-if [ $? -ne 0 ]; then
-    echo "FoGit: Feature validation failed. Run 'fogit validate' for details."
-    exit 1
+if command -v fogit >/dev/null 2>&1; then
+    fogit validate --quiet 2>/dev/null
+    if [ $? -ne 0 ]; then
+        echo "FoGit: Feature validation failed. Run 'fogit validate' for details."
+        exit 1
+    fi
+else
+    echo "FoGit: Warning - 'fogit' not found in PATH. Skipping validation."
+    echo "  Install fogit or run 'fogit hooks uninstall' to remove this hook."
 fi
 %s
 `,
@@ -74,11 +79,16 @@ fi
 	"pre-push": `#!/bin/sh
 %s
 # FoGit pre-push hook: run validation before push
-fogit validate 2>/dev/null
-if [ $? -ne 0 ]; then
-    echo "FoGit: Feature validation failed. Push aborted."
-    echo "Run 'fogit validate' for details or 'fogit validate --fix' to attempt auto-repair."
-    exit 1
+if command -v fogit >/dev/null 2>&1; then
+    fogit validate 2>/dev/null
+    if [ $? -ne 0 ]; then
+        echo "FoGit: Feature validation failed. Push aborted."
+        echo "Run 'fogit validate' for details or 'fogit validate --fix' to attempt auto-repair."
+        exit 1
+    fi
+else
+    echo "FoGit: Warning - 'fogit' not found in PATH. Skipping validation."
+    echo "  Install fogit or run 'fogit hooks uninstall' to remove this hook."
 fi
 %s
 `,
