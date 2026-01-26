@@ -59,7 +59,7 @@ func runLink(cmd *cobra.Command, args []string) error {
 
 	var source, target *fogit.Feature
 	var gitRepo *git.Repository
-	var targetBranch string
+	var sourceBranch, targetBranch string
 
 	if useCrossBranch {
 		// Use cross-branch discovery to find features across all branches
@@ -88,6 +88,7 @@ func runLink(cmd *cobra.Command, args []string) error {
 			return fmt.Errorf("source feature not found: %w", err)
 		}
 		source = sourceResult.Feature
+		sourceBranch = sourceResult.Branch // Save branch for cross-branch save
 
 		// Find target feature across branches
 		targetResult, err := features.FindAcrossBranches(ctx, cmdCtx.Repo, gitRepo, targetIdentifier, cfg)
@@ -141,9 +142,10 @@ func runLink(cmd *cobra.Command, args []string) error {
 
 	// Link features with cross-branch support
 	var linkOpts *features.LinkOptions
-	if useCrossBranch && gitRepo != nil && targetBranch != "" {
+	if useCrossBranch && gitRepo != nil {
 		linkOpts = &features.LinkOptions{
 			GitRepo:      gitRepo,
+			SourceBranch: sourceBranch,
 			TargetBranch: targetBranch,
 		}
 	}

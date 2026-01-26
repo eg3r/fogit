@@ -13,6 +13,165 @@ import (
 	"github.com/go-git/go-git/v5/plumbing/object"
 )
 
+// TestCrossBranch_LinkSourceNotOnCurrentBranch tests the scenario from bug report:
+// BUG: `fogit link` fails when source feature is not on current branch
+//
+// Steps to Reproduce:
+// 1. Initialize git + fogit repo
+// 2. Create feature "user-auth" (creates branch feature/user-auth)
+// 3. Return to master
+// 4. Create feature "api-gateway" (creates branch feature/api-gateway)
+// 5. Return to master
+// 6. Create feature "logging" (creates branch feature/logging)
+// 7. Switch to user-auth feature
+// 8. fogit list - shows all 3 features
+// 9. fogit link api-gateway logging depends-on - FAILS because api-gateway's YAML is NOT on current branch
+//
+// Expected: Link should succeed since fogit list shows all features exist.
+// Actual: Error: failed to save feature: not found
+//
+// Root Cause: link needs to save the relationship to the source feature's YAML file,
+// but the source feature's YAML file only exists on its own branch, not the current branch.
+func TestCrossBranch_LinkSourceNotOnCurrentBranch(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping e2e test in short mode")
+	}
+
+	projectDir := t.TempDir()
+
+	// Step 1: Initialize Git repository
+	t.Log("Step 1: Initializing Git repository...")
+	gitRepo, err := gogit.PlainInit(projectDir, false)
+	if err != nil {
+		t.Fatalf("Failed to init git repo: %v", err)
+	}
+
+	cfg, _ := gitRepo.Config()
+	cfg.User.Name = "Test User"
+	cfg.User.Email = "test@example.com"
+	_ = gitRepo.SetConfig(cfg)
+
+	worktree, _ := gitRepo.Worktree()
+	_ = os.WriteFile(filepath.Join(projectDir, "README.md"), []byte("# Test Project\n"), 0644)
+	_, _ = worktree.Add(".")
+	_, _ = worktree.Commit("Initial commit", &gogit.CommitOptions{
+		Author: &object.Signature{Name: "Test User", Email: "test@example.com", When: time.Now()},
+	})
+
+	// Initialize fogit
+	t.Log("Initializing fogit...")
+	output, err := runFogit(t, projectDir, "init")
+	if err != nil {
+		t.Fatalf("Failed to init fogit: %v\nOutput: %s", err, output)
+	}
+
+	// Disable fuzzy matching
+	_, _ = runFogit(t, projectDir, "config", "set", "feature_search.fuzzy_match", "false")
+
+	// Get the main branch name
+	mainBranch := "master"
+	if _, err := gitRepo.Reference(plumbing.NewBranchReferenceName("main"), false); err == nil {
+		mainBranch = "main"
+	}
+
+	// Step 2: Create "user-auth" feature (creates its own branch)
+	t.Log("Step 2: Creating 'user-auth' feature...")
+	output, err = runFogit(t, projectDir, "create", "user-auth", "-d", "User authentication")
+	if err != nil {
+		t.Fatalf("Failed to create user-auth: %v\nOutput: %s", err, output)
+	}
+	t.Logf("user-auth created:\n%s", output)
+
+	// Step 3: Return to main branch
+	t.Log("Step 3: Returning to main branch...")
+	err = worktree.Checkout(&gogit.CheckoutOptions{
+		Branch: plumbing.NewBranchReferenceName(mainBranch),
+	})
+	if err != nil {
+		t.Fatalf("Failed to checkout %s: %v", mainBranch, err)
+	}
+
+	// Step 4: Create "api-gateway" feature (creates its own branch)
+	t.Log("Step 4: Creating 'api-gateway' feature...")
+	output, err = runFogit(t, projectDir, "create", "api-gateway", "-d", "API gateway")
+	if err != nil {
+		t.Fatalf("Failed to create api-gateway: %v\nOutput: %s", err, output)
+	}
+	t.Logf("api-gateway created:\n%s", output)
+
+	// Step 5: Return to main branch
+	t.Log("Step 5: Returning to main branch...")
+	err = worktree.Checkout(&gogit.CheckoutOptions{
+		Branch: plumbing.NewBranchReferenceName(mainBranch),
+	})
+	if err != nil {
+		t.Fatalf("Failed to checkout %s: %v", mainBranch, err)
+	}
+
+	// Step 6: Create "logging" feature (creates its own branch)
+	t.Log("Step 6: Creating 'logging' feature...")
+	output, err = runFogit(t, projectDir, "create", "logging", "-d", "Logging system")
+	if err != nil {
+		t.Fatalf("Failed to create logging: %v\nOutput: %s", err, output)
+	}
+	t.Logf("logging created:\n%s", output)
+
+	// Step 7: Switch to user-auth feature
+	t.Log("Step 7: Switching to user-auth feature...")
+	output, err = runFogit(t, projectDir, "switch", "user-auth")
+	if err != nil {
+		t.Fatalf("Failed to switch to user-auth: %v\nOutput: %s", err, output)
+	}
+	t.Logf("Switched:\n%s", output)
+
+	// Step 8: Verify fogit list shows all 3 features
+	t.Log("Step 8: Verifying fogit list shows all features...")
+	output, err = runFogit(t, projectDir, "list")
+	if err != nil {
+		t.Fatalf("fogit list failed: %v\nOutput: %s", err, output)
+	}
+
+	if !strings.Contains(output, "user-auth") {
+		t.Fatalf("Expected 'user-auth' in list output, got:\n%s", output)
+	}
+	if !strings.Contains(output, "api-gateway") {
+		t.Fatalf("Expected 'api-gateway' in list output, got:\n%s", output)
+	}
+	if !strings.Contains(output, "logging") {
+		t.Fatalf("Expected 'logging' in list output, got:\n%s", output)
+	}
+	t.Logf("✓ All 3 features visible in list:\n%s", output)
+
+	// Step 9a: Test link where source IS on current branch (should work)
+	t.Log("Step 9a: Linking user-auth -> logging (source IS on current branch - should work)...")
+	output, err = runFogit(t, projectDir, "link", "user-auth", "logging", "depends-on")
+	if err != nil {
+		t.Fatalf("Link failed when source IS on current branch: %v\nOutput: %s", err, output)
+	}
+	t.Logf("✓ Link succeeded when source IS on current branch:\n%s", output)
+
+	// Step 9b: Test link where source is NOT on current branch (THIS IS THE BUG)
+	t.Log("Step 9b: Linking api-gateway -> logging (source NOT on current branch - THE BUG)...")
+	output, err = runFogit(t, projectDir, "link", "api-gateway", "logging", "depends-on")
+	if err != nil {
+		t.Fatalf("BUG CONFIRMED: Link failed when source NOT on current branch: %v\n"+
+			"Output: %s\n\n"+
+			"This is the bug: fogit link should save the relationship to the source feature's branch.\n"+
+			"Currently it tries to save to the current branch where the source YAML doesn't exist.\n"+
+			"Suggested fix: When saving relationship, detect if source is on different branch and\n"+
+			"either checkout that branch temporarily, use git plumbing to write directly, or\n"+
+			"give a clear error message.", err, output)
+	}
+	t.Logf("✓ Link succeeded even when source NOT on current branch:\n%s", output)
+
+	// The relationship was saved on the api-gateway branch via cross-branch commit.
+	// Verify the output contains the expected relationship info.
+	if !strings.Contains(output, "api-gateway") || !strings.Contains(output, "logging") || !strings.Contains(output, "depends-on") {
+		t.Fatalf("Expected relationship output to contain source, target, and type, got:\n%s", output)
+	}
+	t.Log("✓ Cross-branch link bug fix verified - source feature can be on a different branch")
+}
+
 // TestCrossBranch_LinkFeatureFromDifferentBranch tests the scenario where:
 // 1. Developer creates feature A from main branch (creates branch feature/A, stores YAML there)
 // 2. Developer returns to main branch

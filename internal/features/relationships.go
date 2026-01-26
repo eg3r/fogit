@@ -125,6 +125,7 @@ func containsType(types []string, t string) bool {
 // LinkOptions contains options for cross-branch linking
 type LinkOptions struct {
 	GitRepo      *git.Repository // Git repository for cross-branch operations (optional)
+	SourceBranch string          // Branch where source feature exists (for saving primary relationship)
 	TargetBranch string          // Branch where target feature exists (for inverse relationship)
 }
 
@@ -166,8 +167,17 @@ func LinkWithOptions(ctx context.Context, repo fogit.Repository, source, target 
 	}
 
 	// Save updated source feature
-	if err := repo.Update(ctx, source); err != nil {
-		return nil, fmt.Errorf("failed to save feature: %w", err)
+	// If source feature is on a different branch, use cross-branch save
+	saveErr := repo.Update(ctx, source)
+	if saveErr != nil {
+		// If regular save fails and we have cross-branch options with source branch, try cross-branch save
+		if opts != nil && opts.GitRepo != nil && opts.SourceBranch != "" {
+			if cbErr := saveFeatureOnBranch(opts.GitRepo, source, opts.SourceBranch); cbErr != nil {
+				return nil, fmt.Errorf("failed to save feature on branch %s: %w", opts.SourceBranch, cbErr)
+			}
+		} else {
+			return nil, fmt.Errorf("failed to save feature: %w", saveErr)
+		}
 	}
 
 	// Auto-create inverse relationship if configured
