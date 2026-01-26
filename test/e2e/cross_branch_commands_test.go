@@ -151,6 +151,10 @@ func TestCrossBranch_CommandsDiscovery(t *testing.T) {
 	t.Run("show", func(t *testing.T) {
 		testCrossBranchShow(t, projectDir)
 	})
+
+	t.Run("status", func(t *testing.T) {
+		testCrossBranchStatus(t, projectDir)
+	})
 }
 
 func testCrossBranchStats(t *testing.T, projectDir string) {
@@ -276,4 +280,26 @@ func testCrossBranchShow(t *testing.T, projectDir string) {
 	}
 
 	t.Logf("✓ fogit show api-gateway works:\n%s", output)
+}
+
+func testCrossBranchStatus(t *testing.T, projectDir string) {
+	t.Log("Testing fogit status...")
+	output, err := runFogit(t, projectDir, "status")
+	if err != nil {
+		t.Fatalf("fogit status failed: %v\nOutput: %s", err, output)
+	}
+
+	// Status should show 5 total features (not 1)
+	// Bug: status only counts features on current branch
+	if strings.Contains(output, "Features: 1 total") {
+		t.Fatalf("BUG: fogit status only sees 1 feature (current branch only)\n"+
+			"Expected: 5 features\nOutput:\n%s", output)
+	}
+
+	// Should show "Features: 5 total"
+	if !strings.Contains(output, "Features: 5 total") {
+		t.Fatalf("BUG: fogit status should show 5 total features\nOutput:\n%s", output)
+	}
+
+	t.Logf("✓ fogit status correctly shows all features:\n%s", output)
 }
