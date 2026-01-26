@@ -7,7 +7,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/eg3r/fogit/internal/git"
 	"github.com/eg3r/fogit/internal/logger"
+	"github.com/eg3r/fogit/internal/storage"
 	"github.com/eg3r/fogit/pkg/fogit"
 )
 
@@ -120,8 +122,19 @@ func containsType(types []string, t string) bool {
 	return false
 }
 
+// LinkOptions contains options for cross-branch linking
+type LinkOptions struct {
+	GitRepo      *git.Repository // Git repository for cross-branch operations (optional)
+	TargetBranch string          // Branch where target feature exists (for inverse relationship)
+}
+
 // Link creates a relationship between two features
 func Link(ctx context.Context, repo fogit.Repository, source, target *fogit.Feature, relType fogit.RelationshipType, description string, versionConstraint string, cfg *fogit.Config, fogitDir string) (*fogit.Relationship, error) {
+	return LinkWithOptions(ctx, repo, source, target, relType, description, versionConstraint, cfg, fogitDir, nil)
+}
+
+// LinkWithOptions creates a relationship between two features with cross-branch support
+func LinkWithOptions(ctx context.Context, repo fogit.Repository, source, target *fogit.Feature, relType fogit.RelationshipType, description string, versionConstraint string, cfg *fogit.Config, fogitDir string, opts *LinkOptions) (*fogit.Relationship, error) {
 	// Parse version constraint if provided
 	var vc *fogit.VersionConstraint
 	if versionConstraint != "" {
@@ -169,9 +182,19 @@ func Link(ctx context.Context, repo fogit.Repository, source, target *fogit.Feat
 					logger.Warn("failed to create inverse relationship", "error", err, "target", target.Name)
 				}
 			} else {
-				// Save target
-				if err := repo.Update(ctx, target); err != nil {
-					logger.Warn("failed to save inverse relationship", "error", err, "target", target.Name)
+				// Try to save target - may need cross-branch save
+				saveErr := repo.Update(ctx, target)
+				if saveErr != nil {
+					// If regular save fails and we have cross-branch options, try cross-branch save
+					if opts != nil && opts.GitRepo != nil && opts.TargetBranch != "" {
+						if cbErr := saveFeatureOnBranch(opts.GitRepo, target, opts.TargetBranch); cbErr != nil {
+							logger.Warn("failed to save inverse relationship on branch", "error", cbErr, "target", target.Name, "branch", opts.TargetBranch)
+						} else {
+							fmt.Printf("Auto-created inverse relationship: %s -> %s (%s)\n", target.Name, source.Name, typeConfig.Inverse)
+						}
+					} else {
+						logger.Warn("failed to save inverse relationship", "error", saveErr, "target", target.Name)
+					}
 				} else {
 					fmt.Printf("Auto-created inverse relationship: %s -> %s (%s)\n", target.Name, source.Name, typeConfig.Inverse)
 				}
@@ -180,6 +203,41 @@ func Link(ctx context.Context, repo fogit.Repository, source, target *fogit.Feat
 	}
 
 	return &rel, nil
+}
+
+// saveFeatureOnBranch saves a feature to a specific branch using git cross-branch operations
+func saveFeatureOnBranch(gitRepo *git.Repository, feature *fogit.Feature, branch string) error {
+	// Serialize feature to YAML
+	data, err := storage.MarshalFeature(feature)
+	if err != nil {
+		return fmt.Errorf("failed to serialize feature: %w", err)
+	}
+
+	// Determine file path
+	fileName := sanitizeFileName(feature.Name) + ".yml"
+	filePath := ".fogit/features/" + fileName
+
+	// Commit message
+	commitMsg := fmt.Sprintf("fogit: add inverse relationship to %s", feature.Name)
+
+	// Use git cross-branch write
+	return gitRepo.UpdateFileOnBranch(branch, filePath, data, commitMsg)
+}
+
+// sanitizeFileName converts a feature name to a safe filename
+func sanitizeFileName(name string) string {
+	// Convert to lowercase
+	result := strings.ToLower(name)
+	// Replace spaces with hyphens
+	result = strings.ReplaceAll(result, " ", "-")
+	// Remove or replace invalid characters
+	var cleaned strings.Builder
+	for _, r := range result {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' || r == '_' {
+			cleaned.WriteRune(r)
+		}
+	}
+	return cleaned.String()
 }
 
 // Unlink removes a relationship from a feature

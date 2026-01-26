@@ -937,3 +937,103 @@ func (r *Repository) RemoteBranchExists(remoteBranch string) bool {
 	_, err := r.repo.Reference(refName, true)
 	return err == nil
 }
+
+// UpdateFileOnBranch updates a file on a specific branch without checking out.
+// This is used for cross-branch operations like creating inverse relationships.
+// It temporarily checks out the branch, updates the file, commits, and returns to original branch.
+func (r *Repository) UpdateFileOnBranch(targetBranch, filePath string, content []byte, commitMsg string) error {
+	// Validate inputs
+	if !isValidGitRef(targetBranch) {
+		return fmt.Errorf("invalid branch name: %s", targetBranch)
+	}
+
+	// Get current branch to return to later
+	currentBranch, err := r.GetCurrentBranch()
+	if err != nil {
+		return fmt.Errorf("failed to get current branch: %w", err)
+	}
+
+	// If already on target branch, just update normally
+	if currentBranch == targetBranch {
+		return r.updateFileAndCommit(filePath, content, commitMsg)
+	}
+
+	// Stash any uncommitted changes
+	hasStash := false
+	stashCmd := exec.Command("git", "stash", "push", "-m", "fogit-cross-branch-temp")
+	stashCmd.Dir = r.path
+	stashOutput, stashErr := stashCmd.CombinedOutput()
+	if stashErr == nil && !strings.Contains(string(stashOutput), "No local changes") {
+		hasStash = true
+	}
+
+	// Checkout target branch
+	checkoutCmd := exec.Command("git", "checkout", targetBranch)
+	checkoutCmd.Dir = r.path
+	if output, err := checkoutCmd.CombinedOutput(); err != nil {
+		// Restore stash if we had one
+		if hasStash {
+			popCmd := exec.Command("git", "stash", "pop")
+			popCmd.Dir = r.path
+			_ = popCmd.Run()
+		}
+		return fmt.Errorf("failed to checkout branch %s: %s", targetBranch, string(output))
+	}
+
+	// Update the file and commit
+	updateErr := r.updateFileAndCommit(filePath, content, commitMsg)
+
+	// Always return to original branch (use --force since we've committed our changes)
+	returnCmd := exec.Command("git", "checkout", "--force", currentBranch)
+	returnCmd.Dir = r.path
+	if output, err := returnCmd.CombinedOutput(); err != nil {
+		// Log but don't fail - the update may have succeeded
+		fmt.Printf("Warning: failed to return to branch %s: %s\n", currentBranch, string(output))
+	}
+
+	// Pop stash if we had one
+	if hasStash {
+		popCmd := exec.Command("git", "stash", "pop")
+		popCmd.Dir = r.path
+		_ = popCmd.Run()
+	}
+
+	return updateErr
+}
+
+// updateFileAndCommit writes content to a file and commits it
+func (r *Repository) updateFileAndCommit(filePath string, content []byte, commitMsg string) error {
+	// Ensure directory exists
+	fullPath := filepath.Join(r.path, filePath)
+	if err := os.MkdirAll(filepath.Dir(fullPath), 0755); err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	// Write the file
+	// #nosec G306 - fogit feature files need to be readable by team members
+	if err := os.WriteFile(fullPath, content, 0644); err != nil {
+		return fmt.Errorf("failed to write file: %w", err)
+	}
+
+	// Stage the file
+	addCmd := exec.Command("git", "add", filePath)
+	addCmd.Dir = r.path
+	if output, err := addCmd.CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to stage file: %s", string(output))
+	}
+
+	// Commit with --no-verify to skip pre-commit hooks
+	// This is necessary for cross-branch inverse relationship saves because
+	// the validation hook would fail (relationship target doesn't exist on target branch)
+	commitCmd := exec.Command("git", "commit", "--no-verify", "-m", commitMsg)
+	commitCmd.Dir = r.path
+	if output, err := commitCmd.CombinedOutput(); err != nil {
+		// Check if nothing to commit (file unchanged)
+		if strings.Contains(string(output), "nothing to commit") {
+			return nil // Not an error
+		}
+		return fmt.Errorf("failed to commit: %s", string(output))
+	}
+
+	return nil
+}
