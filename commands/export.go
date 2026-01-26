@@ -81,7 +81,13 @@ func runExport(cmd *cobra.Command, args []string) error {
 	ctx, cancel := WithExportTimeout(cmd.Context())
 	defer cancel()
 
-	// Export using service
+	// Get all features using cross-branch discovery
+	featuresList, err := ListFeaturesCrossBranch(ctx, cmdCtx, filter)
+	if err != nil {
+		return fmt.Errorf("failed to list features: %w", err)
+	}
+
+	// Export using service with pre-loaded features
 	opts := exchange.ExportOptions{
 		Format:   format,
 		Filter:   filter,
@@ -89,7 +95,7 @@ func runExport(cmd *cobra.Command, args []string) error {
 		Pretty:   exportPretty,
 	}
 
-	exportData, err := exchange.Export(ctx, cmdCtx.Repo, opts)
+	exportData, err := exchange.ExportWithFeatures(featuresList, opts)
 	if err != nil {
 		return err
 	}

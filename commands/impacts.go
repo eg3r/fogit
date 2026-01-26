@@ -53,13 +53,12 @@ func runImpacts(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	repo := cmdCtx.Repo
 	cfg := cmdCtx.Config
 
-	// Find the feature
-	findResult, err := features.Find(cmd.Context(), repo, args[0], cfg)
+	// Find the feature using cross-branch discovery
+	feature, err := FindFeatureCrossBranch(cmd.Context(), cmdCtx, args[0], "fogit impacts <id>")
 	if err != nil {
-		return fmt.Errorf("feature not found: %s", args[0])
+		return err
 	}
 
 	// Build impact options from flags
@@ -73,8 +72,14 @@ func runImpacts(cmd *cobra.Command, args []string) error {
 	// Determine which categories to include using the service
 	includedCategories := features.GetIncludedCategories(cfg, opts)
 
-	// Build impact analysis using the service
-	result, err := features.AnalyzeImpacts(cmd.Context(), findResult.Feature, repo, cfg, includedCategories, impactsDepth)
+	// Get all features using cross-branch discovery for impact analysis
+	allFeatures, err := ListFeaturesCrossBranch(cmd.Context(), cmdCtx, nil)
+	if err != nil {
+		return fmt.Errorf("failed to list features: %w", err)
+	}
+
+	// Build impact analysis using the service with cross-branch features
+	result, err := features.AnalyzeImpactsWithFeatures(cmd.Context(), feature, allFeatures, cfg, includedCategories, impactsDepth)
 	if err != nil {
 		return fmt.Errorf("failed to analyze impacts: %w", err)
 	}

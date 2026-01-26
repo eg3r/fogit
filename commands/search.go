@@ -1,7 +1,6 @@
 package commands
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -9,9 +8,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/eg3r/fogit/internal/common"
-	"github.com/eg3r/fogit/internal/config"
-	"github.com/eg3r/fogit/internal/features"
-	"github.com/eg3r/fogit/internal/git"
 	"github.com/eg3r/fogit/internal/printer"
 	"github.com/eg3r/fogit/pkg/fogit"
 )
@@ -71,19 +67,10 @@ func init() {
 func runSearch(cmd *cobra.Command, args []string) error {
 	query := args[0]
 
-	// Get repository
-	fogitDir, err := getFogitDir()
+	// Get command context
+	cmdCtx, err := GetCommandContext()
 	if err != nil {
-		return fmt.Errorf("failed to get .fogit directory: %w", err)
-	}
-
-	repo := getRepository(fogitDir)
-
-	// Load config to check workflow mode
-	cfg, err := config.Load(fogitDir)
-	if err != nil {
-		// Fall back to default config if not found
-		cfg = fogit.DefaultConfig()
+		return fmt.Errorf("failed to initialize: %w", err)
 	}
 
 	// Build filter with search query
@@ -109,16 +96,15 @@ func runSearch(cmd *cobra.Command, args []string) error {
 	// Per spec/specification/07-git-integration.md#cross-branch-feature-discovery:
 	// In branch-per-feature mode, cross-branch discovery is AUTOMATIC
 	// Use --current-branch to override and only search current branch
-	useCrossBranch := !searchAllBranches && cfg.Workflow.Mode == "branch-per-feature"
-
-	if useCrossBranch {
-		featuresList, err = searchFeaturesAllBranches(ctx, repo, filter)
+	if searchAllBranches {
+		// --current-branch flag: search features on current branch only
+		featuresList, err = cmdCtx.Repo.List(ctx, filter)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to search features: %w", err)
 		}
 	} else {
-		// trunk-based mode or --current-branch flag: search features on current branch only
-		featuresList, err = repo.List(ctx, filter)
+		// Use shared cross-branch helper (handles mode check internally)
+		featuresList, err = ListFeaturesCrossBranch(ctx, cmdCtx, filter)
 		if err != nil {
 			return fmt.Errorf("failed to search features: %w", err)
 		}
@@ -143,42 +129,6 @@ func runSearch(cmd *cobra.Command, args []string) error {
 		outputSearchResults(featuresList, query)
 		return nil
 	}
-}
-
-// searchFeaturesAllBranches searches features from all branches using cross-branch discovery
-func searchFeaturesAllBranches(ctx context.Context, repo fogit.Repository, filter *fogit.Filter) ([]*fogit.Feature, error) {
-	// Get git repository for cross-branch operations
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get current directory: %w", err)
-	}
-
-	gitRoot, err := git.FindGitRoot(cwd)
-	if err != nil {
-		return nil, fmt.Errorf("not in a git repository: %w", err)
-	}
-
-	gitRepo, err := git.OpenRepository(gitRoot)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open git repository: %w", err)
-	}
-
-	// Use cross-branch feature discovery
-	crossBranchFeatures, err := features.ListFeaturesAcrossBranches(ctx, repo, gitRepo)
-	if err != nil {
-		return nil, fmt.Errorf("failed to search features across branches: %w", err)
-	}
-
-	// Extract features and apply filter
-	var featuresList []*fogit.Feature
-	for _, cbf := range crossBranchFeatures {
-		// Apply filter
-		if filter.Matches(cbf.Feature) {
-			featuresList = append(featuresList, cbf.Feature)
-		}
-	}
-
-	return featuresList, nil
 }
 
 func outputSearchResults(features []*fogit.Feature, query string) {

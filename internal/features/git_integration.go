@@ -53,6 +53,14 @@ func (gi *GitIntegration) IsAvailable() bool {
 	return gi != nil && gi.gitRepo != nil
 }
 
+// GetGitRepo returns the underlying git repository
+func (gi *GitIntegration) GetGitRepo() *git.Repository {
+	if gi == nil {
+		return nil
+	}
+	return gi.gitRepo
+}
+
 // GetCurrentBranch returns the current git branch name
 func (gi *GitIntegration) GetCurrentBranch() (string, error) {
 	if !gi.IsAvailable() {

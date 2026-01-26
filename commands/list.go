@@ -1,14 +1,11 @@
 package commands
 
 import (
-	"context"
 	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 
-	"github.com/eg3r/fogit/internal/features"
-	"github.com/eg3r/fogit/internal/git"
 	"github.com/eg3r/fogit/internal/printer"
 	"github.com/eg3r/fogit/pkg/fogit"
 )
@@ -132,16 +129,15 @@ func runList(cmd *cobra.Command, args []string) error {
 	// Per spec/specification/07-git-integration.md#cross-branch-feature-discovery:
 	// In branch-per-feature mode, cross-branch discovery is AUTOMATIC
 	// Use --current-branch to override and only show current branch
-	useCrossBranch := !listAllBranches && cmdCtx.Config.Workflow.Mode == "branch-per-feature"
-
-	if useCrossBranch {
-		featuresList, err = listFeaturesAllBranches(ctx, cmdCtx, filter)
+	if listAllBranches {
+		// --current-branch flag: list features on current branch only
+		featuresList, err = cmdCtx.Repo.List(ctx, filter)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed to list features: %w", err)
 		}
 	} else {
-		// trunk-based mode or --current-branch flag: list features on current branch only
-		featuresList, err = cmdCtx.Repo.List(ctx, filter)
+		// Use shared cross-branch helper (handles mode check internally)
+		featuresList, err = ListFeaturesCrossBranch(ctx, cmdCtx, filter)
 		if err != nil {
 			return fmt.Errorf("failed to list features: %w", err)
 		}
@@ -169,40 +165,4 @@ func runList(cmd *cobra.Command, args []string) error {
 	default:
 		return printer.OutputTable(os.Stdout, featuresList)
 	}
-}
-
-// listFeaturesAllBranches lists features from all branches using cross-branch discovery
-func listFeaturesAllBranches(ctx context.Context, cmdCtx *CommandContext, filter *fogit.Filter) ([]*fogit.Feature, error) {
-	// Get git repository for cross-branch operations
-	cwd, err := os.Getwd()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get current directory: %w", err)
-	}
-
-	gitRoot, err := git.FindGitRoot(cwd)
-	if err != nil {
-		return nil, fmt.Errorf("not in a git repository: %w", err)
-	}
-
-	gitRepo, err := git.OpenRepository(gitRoot)
-	if err != nil {
-		return nil, fmt.Errorf("failed to open git repository: %w", err)
-	}
-
-	// Use cross-branch feature discovery
-	crossBranchFeatures, err := features.ListFeaturesAcrossBranches(ctx, cmdCtx.Repo, gitRepo)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list features across branches: %w", err)
-	}
-
-	// Extract features and apply filter
-	var featuresList []*fogit.Feature
-	for _, cbf := range crossBranchFeatures {
-		// Apply filter
-		if filter.Matches(cbf.Feature) {
-			featuresList = append(featuresList, cbf.Feature)
-		}
-	}
-
-	return featuresList, nil
 }

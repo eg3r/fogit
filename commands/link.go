@@ -2,13 +2,10 @@ package commands
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
 	"github.com/eg3r/fogit/internal/features"
-	"github.com/eg3r/fogit/internal/git"
-	"github.com/eg3r/fogit/internal/printer"
 	"github.com/eg3r/fogit/pkg/fogit"
 )
 
@@ -55,74 +52,23 @@ func runLink(cmd *cobra.Command, args []string) error {
 	// Per spec/specification/07-git-integration.md#cross-branch-feature-discovery:
 	// In branch-per-feature mode, cross-branch discovery is required for
 	// "Creating relationships between features on different branches"
-	useCrossBranch := cfg.Workflow.Mode == "branch-per-feature"
+	// FindFeatureCrossBranchWithResult handles mode check internally
 
-	var source, target *fogit.Feature
-	var gitRepo *git.Repository
-	var sourceBranch, targetBranch string
-
-	if useCrossBranch {
-		// Use cross-branch discovery to find features across all branches
-		cwd, err := os.Getwd()
-		if err != nil {
-			return fmt.Errorf("failed to get current directory: %w", err)
-		}
-
-		gitRoot, err := git.FindGitRoot(cwd)
-		if err != nil {
-			return fmt.Errorf("not in a git repository: %w", err)
-		}
-
-		gitRepo, err = git.OpenRepository(gitRoot)
-		if err != nil {
-			return fmt.Errorf("failed to open git repository: %w", err)
-		}
-
-		// Find source feature across branches
-		sourceResult, err := features.FindAcrossBranches(ctx, cmdCtx.Repo, gitRepo, sourceIdentifier, cfg)
-		if err != nil {
-			if err == fogit.ErrNotFound && sourceResult != nil && len(sourceResult.Suggestions) > 0 {
-				printer.PrintSuggestions(os.Stdout, sourceIdentifier, sourceResult.Suggestions, "fogit link <id> ...")
-				return fmt.Errorf("source feature not found")
-			}
-			return fmt.Errorf("source feature not found: %w", err)
-		}
-		source = sourceResult.Feature
-		sourceBranch = sourceResult.Branch // Save branch for cross-branch save
-
-		// Find target feature across branches
-		targetResult, err := features.FindAcrossBranches(ctx, cmdCtx.Repo, gitRepo, targetIdentifier, cfg)
-		if err != nil {
-			if err == fogit.ErrNotFound && targetResult != nil && len(targetResult.Suggestions) > 0 {
-				printer.PrintSuggestions(os.Stdout, targetIdentifier, targetResult.Suggestions, "fogit link ... <id> ...")
-				return fmt.Errorf("target feature not found")
-			}
-			return fmt.Errorf("target feature not found: %w", err)
-		}
-		target = targetResult.Feature
-		targetBranch = targetResult.Branch // Save branch for inverse relationship
-	} else {
-		// Trunk-based mode: only look at current branch
-		sourceResult, err := features.Find(ctx, cmdCtx.Repo, sourceIdentifier, cfg)
-		if err != nil {
-			if err == fogit.ErrNotFound && sourceResult != nil && len(sourceResult.Suggestions) > 0 {
-				printer.PrintSuggestions(os.Stdout, sourceIdentifier, sourceResult.Suggestions, "fogit link <id> ...")
-				return fmt.Errorf("source feature not found")
-			}
-			return fmt.Errorf("source feature not found: %w", err)
-		}
-		source = sourceResult.Feature
-
-		targetResult, err := features.Find(ctx, cmdCtx.Repo, targetIdentifier, cfg)
-		if err != nil {
-			if err == fogit.ErrNotFound && targetResult != nil && len(targetResult.Suggestions) > 0 {
-				printer.PrintSuggestions(os.Stdout, targetIdentifier, targetResult.Suggestions, "fogit link ... <id> ...")
-				return fmt.Errorf("target feature not found")
-			}
-			return fmt.Errorf("target feature not found: %w", err)
-		}
-		target = targetResult.Feature
+	// Find source feature (cross-branch if in branch-per-feature mode)
+	sourceResult, err := FindFeatureCrossBranchWithResult(ctx, cmdCtx, sourceIdentifier, "fogit link <id> ...")
+	if err != nil {
+		return fmt.Errorf("source feature not found: %w", err)
 	}
+	source := sourceResult.Feature
+	sourceBranch := sourceResult.Branch
+
+	// Find target feature (cross-branch if in branch-per-feature mode)
+	targetResult, err := FindFeatureCrossBranchWithResult(ctx, cmdCtx, targetIdentifier, "fogit link ... <id> ...")
+	if err != nil {
+		return fmt.Errorf("target feature not found: %w", err)
+	}
+	target := targetResult.Feature
+	targetBranch := targetResult.Branch
 
 	// Create relationship object for validation and cycle detection
 	rel := &fogit.Relationship{
@@ -142,9 +88,9 @@ func runLink(cmd *cobra.Command, args []string) error {
 
 	// Link features with cross-branch support
 	var linkOpts *features.LinkOptions
-	if useCrossBranch && gitRepo != nil {
+	if cfg.Workflow.Mode == "branch-per-feature" && cmdCtx.Git != nil && cmdCtx.Git.GetGitRepo() != nil {
 		linkOpts = &features.LinkOptions{
-			GitRepo:      gitRepo,
+			GitRepo:      cmdCtx.Git.GetGitRepo(),
 			SourceBranch: sourceBranch,
 			TargetBranch: targetBranch,
 		}

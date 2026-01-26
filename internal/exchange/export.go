@@ -30,6 +30,12 @@ func Export(ctx context.Context, repo fogit.Repository, opts ExportOptions) (*Ex
 		return nil, fmt.Errorf("failed to list features: %w", err)
 	}
 
+	return ExportWithFeatures(features, opts)
+}
+
+// ExportWithFeatures exports pre-loaded features to the specified format.
+// This is useful for cross-branch export where features come from multiple branches.
+func ExportWithFeatures(features []*fogit.Feature, opts ExportOptions) (*ExportData, error) {
 	// Build feature ID set for target existence check
 	featureIDs := make(map[string]bool)
 	for _, f := range features {

@@ -63,8 +63,8 @@ func runShow(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to initialize: %w", err)
 	}
 
-	// Find feature using the consolidated helper
-	feature, err := FindFeatureWithSuggestions(cmd.Context(), cmdCtx.Repo, identifier, cmdCtx.Config, "fogit show <id>")
+	// Find feature using cross-branch discovery
+	feature, err := FindFeatureCrossBranch(cmd.Context(), cmdCtx, identifier, "fogit show <id>")
 	if err != nil {
 		return err
 	}

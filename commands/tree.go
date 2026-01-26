@@ -64,8 +64,8 @@ func runTree(cmd *cobra.Command, args []string) error {
 		filter.State = fogit.State(treeState)
 	}
 
-	// Get all features
-	allFeatures, err := cmdCtx.Repo.List(ctx, filter)
+	// Get all features using cross-branch discovery
+	allFeatures, err := ListFeaturesCrossBranch(ctx, cmdCtx, filter)
 	if err != nil {
 		return fmt.Errorf("failed to list features: %w", err)
 	}
@@ -77,7 +77,7 @@ func runTree(cmd *cobra.Command, args []string) error {
 
 	// If specific feature requested, start from there
 	if len(args) > 0 {
-		feature, err := FindFeatureWithSuggestions(ctx, cmdCtx.Repo, args[0], cfg, "fogit tree <id>")
+		feature, err := FindFeatureCrossBranch(ctx, cmdCtx, args[0], "fogit tree <id>")
 		if err != nil {
 			return err
 		}

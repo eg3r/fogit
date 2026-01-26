@@ -87,15 +87,21 @@ func GetIncludedCategories(cfg *fogit.Config, opts ImpactOptions) []string {
 // AnalyzeImpacts performs a BFS traversal to find all features impacted by changes to the given feature.
 // It follows reverse relationships (features that depend on the target) through the specified categories.
 func AnalyzeImpacts(ctx context.Context, feature *fogit.Feature, repo fogit.Repository, cfg *fogit.Config, categories []string, maxDepth int) (*ImpactResult, error) {
-	result := &ImpactResult{
-		Feature:            feature.Name,
-		CategoriesIncluded: categories,
-	}
-
 	// Get all features for lookup
 	allFeatures, err := repo.List(ctx, &fogit.Filter{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list features: %w", err)
+	}
+
+	return AnalyzeImpactsWithFeatures(ctx, feature, allFeatures, cfg, categories, maxDepth)
+}
+
+// AnalyzeImpactsWithFeatures performs impact analysis using a pre-loaded list of features.
+// This is useful for cross-branch analysis where features come from multiple branches.
+func AnalyzeImpactsWithFeatures(ctx context.Context, feature *fogit.Feature, allFeatures []*fogit.Feature, cfg *fogit.Config, categories []string, maxDepth int) (*ImpactResult, error) {
+	result := &ImpactResult{
+		Feature:            feature.Name,
+		CategoriesIncluded: categories,
 	}
 
 	featureMap := make(map[string]*fogit.Feature)
