@@ -110,6 +110,12 @@ func (r *FileRepository) findFeatureFile(ctx context.Context, id string) (string
 // featurePath generates the path for a new feature file using slugified name
 // For updates/deletes, use findFeatureFile() instead
 func (r *FileRepository) featurePath(ctx context.Context, feature *fogit.Feature) (string, error) {
+	return r.featurePathExcluding(ctx, feature, "")
+}
+
+// featurePathExcluding generates a path for a feature file, optionally excluding
+// a filename from collision detection. Used during updates when the file already exists.
+func (r *FileRepository) featurePathExcluding(ctx context.Context, feature *fogit.Feature, excludeFilename string) (string, error) {
 	// Check for cancellation before starting (if context provided)
 	if ctx != nil {
 		select {
@@ -129,7 +135,7 @@ func (r *FileRepository) featurePath(ctx context.Context, feature *fogit.Feature
 	}
 
 	for _, entry := range entries {
-		if !entry.IsDir() {
+		if !entry.IsDir() && entry.Name() != excludeFilename {
 			existingFiles[entry.Name()] = true
 		}
 	}
@@ -250,33 +256,38 @@ func (r *FileRepository) Update(ctx context.Context, feature *fogit.Feature) err
 		return err
 	}
 
-	// Generate new path (name might have changed)
-	newPath, err := r.featurePath(ctx, feature)
+	// Read the old feature to check if name changed
+	oldFeature, err := ReadFeatureFile(oldPath)
+	if err != nil {
+		return fmt.Errorf("failed to read existing feature: %w", err)
+	}
+
+	// If name hasn't changed, just update in place (no rename needed)
+	if oldFeature.Name == feature.Name {
+		return WriteFeatureFile(oldPath, feature)
+	}
+
+	// Name changed - need to generate new path and rename file
+	newPath, err := r.featurePathExcluding(ctx, feature, filepath.Base(oldPath))
 	if err != nil {
 		return fmt.Errorf("failed to generate feature path: %w", err)
 	}
 
-	// If name changed, we need to rename the file
-	if oldPath != newPath {
-		// Write to new location
-		if err := WriteFeatureFile(newPath, feature); err != nil {
-			return err
-		}
-		// Remove old file
-		if err := os.Remove(oldPath); err != nil {
-			// Try to clean up the new file
-			os.Remove(newPath)
-			return fmt.Errorf("failed to remove old feature file: %w", err)
-		}
-		// Update index with new filename
-		idx := r.getIndex()
-		idx.Set(feature.ID, filepath.Base(newPath))
-		_ = idx.Save() // Best effort
-		return nil
+	// Write to new location
+	if err := WriteFeatureFile(newPath, feature); err != nil {
+		return err
 	}
-
-	// Same path, just update
-	return WriteFeatureFile(oldPath, feature)
+	// Remove old file
+	if err := os.Remove(oldPath); err != nil {
+		// Try to clean up the new file
+		os.Remove(newPath)
+		return fmt.Errorf("failed to remove old feature file: %w", err)
+	}
+	// Update index with new filename
+	idx := r.getIndex()
+	idx.Set(feature.ID, filepath.Base(newPath))
+	_ = idx.Save() // Best effort
+	return nil
 }
 
 // Delete removes a feature from the repository
