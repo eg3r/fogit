@@ -241,8 +241,18 @@ func TestInitConfigMatchesDefault(t *testing.T) {
 		t.Errorf("workflow.mode = %q, want %q", createdCfg.Workflow.Mode, defaultCfg.Workflow.Mode)
 	}
 
-	if createdCfg.Workflow.BaseBranch != defaultCfg.Workflow.BaseBranch {
-		t.Errorf("workflow.base_branch = %q, want %q", createdCfg.Workflow.BaseBranch, defaultCfg.Workflow.BaseBranch)
+	// BaseBranch is now dynamically detected from the environment.
+	// It should be either main, master, or whatever git config init.defaultBranch is set to.
+	validBaseBranches := []string{"main", "master"}
+	isValidBaseBranch := false
+	for _, valid := range validBaseBranches {
+		if createdCfg.Workflow.BaseBranch == valid {
+			isValidBaseBranch = true
+			break
+		}
+	}
+	if !isValidBaseBranch {
+		t.Errorf("workflow.base_branch = %q, want one of %v", createdCfg.Workflow.BaseBranch, validBaseBranches)
 	}
 
 	if createdCfg.AutoCommit != defaultCfg.AutoCommit {

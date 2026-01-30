@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/eg3r/fogit/internal/common"
 	"github.com/eg3r/fogit/internal/config"
 	"github.com/eg3r/fogit/pkg/fogit"
 )
@@ -44,6 +45,11 @@ func InitializeRepository(cwd string) error {
 	// Create default config file using spec-compliant defaults
 	defaultCfg := fogit.DefaultConfig()
 	defaultCfg.Repository.Name = filepath.Base(cwd)
+
+	// Detect and set the actual trunk branch using Git's native methods
+	if trunkBranch := common.DetectTrunkBranch(cwd); trunkBranch != "" {
+		defaultCfg.Workflow.BaseBranch = trunkBranch
+	}
 
 	if err := config.Save(fogitDir, defaultCfg); err != nil {
 		return fmt.Errorf("failed to create config file: %w", err)

@@ -13,6 +13,8 @@ import (
 	"github.com/go-git/go-git/v5"
 	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/go-git/go-git/v5/plumbing/object"
+
+	"github.com/eg3r/fogit/internal/common"
 )
 
 var (
@@ -886,41 +888,9 @@ func (r *Repository) ReadFileOnBranch(branch, path string) ([]byte, error) {
 }
 
 // GetTrunkBranch returns the main/master branch name.
-// Checks for existence of common trunk branch names in order: main, master.
-// Falls back to "main" if neither exists.
+// Uses Git's native methods via common.DetectTrunkBranch for consistent detection.
 func (r *Repository) GetTrunkBranch() (string, error) {
-	branches, err := r.ListBranches()
-	if err != nil {
-		return "", err
-	}
-
-	// Check for common trunk branch names
-	trunkCandidates := []string{"main", "master"}
-	branchSet := make(map[string]bool)
-	for _, b := range branches {
-		branchSet[b] = true
-	}
-
-	for _, candidate := range trunkCandidates {
-		if branchSet[candidate] {
-			return candidate, nil
-		}
-	}
-
-	// Check remote branches as fallback
-	remoteBranches, err := r.ListRemoteBranches()
-	if err == nil {
-		for _, candidate := range trunkCandidates {
-			for _, remote := range remoteBranches {
-				if strings.HasSuffix(remote, "/"+candidate) {
-					return candidate, nil
-				}
-			}
-		}
-	}
-
-	// Default to "main" if nothing found
-	return "main", nil
+	return common.DetectTrunkBranch(r.path), nil
 }
 
 // BranchExists checks if a branch exists locally

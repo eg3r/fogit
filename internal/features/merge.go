@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/eg3r/fogit/internal/common"
 	"github.com/eg3r/fogit/internal/git"
 	"github.com/eg3r/fogit/pkg/fogit"
 )
@@ -287,7 +288,7 @@ func findMostRecentFeature(features []*fogit.Feature) *fogit.Feature {
 
 // isMainBranch checks if the branch is a main/master/trunk branch
 func isMainBranch(branch string) bool {
-	return branch == "main" || branch == "master" || branch == "trunk"
+	return common.IsTrunkBranch(branch)
 }
 
 // handleMergeAbort handles `fogit merge --abort`
