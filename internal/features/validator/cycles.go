@@ -5,76 +5,213 @@ import (
 )
 
 // checkCycles detects cycles in categories where not allowed (E005)
+// Optimized: builds graph once per category and detects all cycles in single pass
 func (v *Validator) checkCycles(result *ValidationResult) {
-	for _, feature := range v.features {
-		fileName := GetFeatureFileName(feature.Name)
+	// Get categories that need strict cycle detection
+	strictCategories := make(map[string]bool)
+	for name, cat := range v.config.Relationships.Categories {
+		if !cat.AllowCycles && cat.CycleDetection == "strict" {
+			strictCategories[name] = true
+		}
+	}
 
-		for _, rel := range feature.Relationships {
-			category := rel.GetCategory(v.config)
-			catConfig, exists := v.config.Relationships.Categories[category]
-			if !exists {
+	if len(strictCategories) == 0 {
+		return
+	}
+
+	// Get forward relationship types (exclude inverse types to avoid false positives)
+	// When A depends-on B, B gets required-by A - we only want to traverse depends-on
+	forwardTypes := v.getForwardRelationshipTypes()
+
+	// Check each strict category
+	for category := range strictCategories {
+		// Also get types that belong to this category
+		categoryTypes := make(map[string]bool)
+		for typeName, typeConfig := range v.config.Relationships.Types {
+			if typeConfig.Category == category && forwardTypes[typeName] {
+				categoryTypes[typeName] = true
+			}
+		}
+
+		cycles := v.detectCyclesInCategory(category, categoryTypes)
+
+		// Report each cycle once (using the first node as the reporter)
+		reported := make(map[string]bool)
+		for _, cycle := range cycles {
+			if len(cycle) < 2 {
 				continue
 			}
 
-			if !catConfig.AllowCycles && catConfig.CycleDetection == "strict" {
-				if v.hasCycle(feature.ID, rel.TargetID, category) {
-					target := v.featureMap[rel.TargetID]
-					targetName := rel.TargetID
-					if target != nil {
-						targetName = target.Name
-					}
+			// Use smallest ID as cycle identifier to avoid duplicates
+			cycleKey := v.getCycleKey(cycle)
+			if reported[cycleKey] {
+				continue
+			}
+			reported[cycleKey] = true
 
-					result.Issues = append(result.Issues, ValidationIssue{
-						Code:        CodeCycleViolation,
-						Severity:    SeverityError,
-						FeatureID:   feature.ID,
-						FeatureName: feature.Name,
-						FileName:    fileName,
-						Message: fmt.Sprintf("Cycle detected in %s category: %s -> %s creates circular dependency",
-							category, feature.Name, targetName),
-						Fixable: false,
-						Context: map[string]string{
-							"category":   category,
-							"targetID":   rel.TargetID,
-							"targetName": targetName,
-						},
-					})
+			// Report on the first feature in the cycle
+			featureID := cycle[0]
+			feature := v.featureMap[featureID]
+			if feature == nil {
+				continue
+			}
+
+			// Build readable cycle path
+			cyclePath := v.formatCyclePath(cycle)
+
+			result.Issues = append(result.Issues, ValidationIssue{
+				Code:        CodeCycleViolation,
+				Severity:    SeverityError,
+				FeatureID:   featureID,
+				FeatureName: feature.Name,
+				FileName:    GetFeatureFileName(feature.Name),
+				Message:     fmt.Sprintf("Cycle detected in %s category: %s", category, cyclePath),
+				Fixable:     false,
+				Context: map[string]string{
+					"category": category,
+					"cycle":    cyclePath,
+				},
+			})
+		}
+	}
+}
+
+// getForwardRelationshipTypes returns a set of relationship types that are "forward" types
+// For relationship pairs (depends-on/required-by), we pick one direction to avoid counting
+// the same edge twice. We use lexicographic ordering to consistently pick the "forward" one.
+func (v *Validator) getForwardRelationshipTypes() map[string]bool {
+	forward := make(map[string]bool)
+
+	for name, rt := range v.config.Relationships.Types {
+		if rt.Bidirectional {
+			// Bidirectional types are always included
+			forward[name] = true
+		} else if rt.Inverse == "" {
+			// No inverse defined - include it
+			forward[name] = true
+		} else {
+			// Has an inverse - pick the lexicographically smaller one as "forward"
+			if name < rt.Inverse {
+				forward[name] = true
+			}
+			// Otherwise, the inverse type is the "forward" one
+		}
+	}
+
+	return forward
+}
+
+// detectCyclesInCategory finds all cycles in a category using only forward relationship types
+func (v *Validator) detectCyclesInCategory(_ string, categoryTypes map[string]bool) [][]string {
+	// Build adjacency list for this category using only forward types
+	adj := make(map[string][]string)
+	for _, feature := range v.features {
+		for _, rel := range feature.Relationships {
+			// Only include relationship types in the categoryTypes set
+			if !categoryTypes[string(rel.Type)] {
+				continue
+			}
+			adj[feature.ID] = append(adj[feature.ID], rel.TargetID)
+		}
+	}
+
+	// Find all cycles using DFS with path tracking
+	// WHITE (0) = unvisited, GRAY (1) = in current path, BLACK (2) = fully processed
+	color := make(map[string]int)
+	var cycles [][]string
+
+	var dfs func(node string, path []string)
+	dfs = func(node string, path []string) {
+		color[node] = 1 // GRAY - in current path
+		path = append(path, node)
+
+		for _, neighbor := range adj[node] {
+			if color[neighbor] == 0 {
+				dfs(neighbor, path)
+			} else if color[neighbor] == 1 {
+				// Back edge found - extract cycle from path
+				// Find where neighbor appears in path
+				cycleStart := -1
+				for i, id := range path {
+					if id == neighbor {
+						cycleStart = i
+						break
+					}
+				}
+				if cycleStart >= 0 {
+					// Extract the cycle portion of the path
+					cycle := make([]string, len(path)-cycleStart)
+					copy(cycle, path[cycleStart:])
+					cycles = append(cycles, cycle)
 				}
 			}
 		}
-	}
-}
 
-// hasCycle checks if adding edge sourceID->targetID creates a cycle
-func (v *Validator) hasCycle(sourceID, targetID, category string) bool {
-	visited := make(map[string]bool)
-	return v.dfsCycleCheck(targetID, sourceID, category, visited)
-}
-
-// dfsCycleCheck performs DFS to find if target is reachable from current
-func (v *Validator) dfsCycleCheck(current, target, category string, visited map[string]bool) bool {
-	if current == target {
-		return true
-	}
-	if visited[current] {
-		return false
-	}
-	visited[current] = true
-
-	feature := v.featureMap[current]
-	if feature == nil {
-		return false
+		color[node] = 2 // BLACK - fully processed
 	}
 
-	for _, rel := range feature.Relationships {
-		if rel.GetCategory(v.config) == category {
-			if v.dfsCycleCheck(rel.TargetID, target, category, visited) {
-				return true
-			}
+	// Run DFS from all unvisited nodes
+	for _, feature := range v.features {
+		if color[feature.ID] == 0 {
+			dfs(feature.ID, nil)
 		}
 	}
 
-	return false
+	return cycles
+}
+
+// getCycleKey returns a unique key for a cycle (to avoid reporting same cycle multiple times)
+func (v *Validator) getCycleKey(cycle []string) string {
+	if len(cycle) == 0 {
+		return ""
+	}
+
+	// Find the minimum ID and rotate cycle to start with it
+	minIdx := 0
+	for i, id := range cycle {
+		if id < cycle[minIdx] {
+			minIdx = i
+		}
+	}
+
+	// Build key from rotated cycle
+	key := ""
+	for i := 0; i < len(cycle); i++ {
+		key += cycle[(minIdx+i)%len(cycle)] + "->"
+	}
+	return key
+}
+
+// formatCyclePath creates a readable cycle path string
+func (v *Validator) formatCyclePath(cycle []string) string {
+	if len(cycle) == 0 {
+		return ""
+	}
+
+	path := ""
+	for i, id := range cycle {
+		feature := v.featureMap[id]
+		name := id
+		if feature != nil {
+			name = feature.Name
+		}
+		if i > 0 {
+			path += " -> "
+		}
+		path += name
+	}
+
+	// Complete the cycle display
+	if len(cycle) > 0 {
+		feature := v.featureMap[cycle[0]]
+		name := cycle[0]
+		if feature != nil {
+			name = feature.Name
+		}
+		path += " -> " + name
+	}
+
+	return path
 }
 
 // DetectAllCycles finds all cycles in the relationship graph for a given category

@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 // TestE2E_CycleDetection tests dependency cycle detection and prevention.
@@ -288,4 +290,174 @@ func TestE2E_CycleDetectionModes(t *testing.T) {
 	t.Logf("Categories with settings:\n%s", out)
 
 	t.Log("✅ Cycle detection modes test completed!")
+}
+
+// TestE2E_ValidateCycleDetection tests that validate correctly identifies cycles
+// and does NOT falsely flag forward/inverse relationship pairs as cycles.
+// This tests the fix for the bug where "A depends-on B" + "B required-by A"
+// was incorrectly reported as a cycle.
+func TestE2E_ValidateCycleDetection(t *testing.T) {
+	if testing.Short() {
+		t.Skip("Skipping E2E test in short mode")
+	}
+
+	// Create temp directory
+	tmpDir := t.TempDir()
+	projectDir := filepath.Join(tmpDir, "E2E_ValidateCycleDetection")
+	if err := os.MkdirAll(projectDir, 0755); err != nil {
+		t.Fatalf("Failed to create project directory: %v", err)
+	}
+
+	// Helper to run commands
+	run := func(args ...string) (string, error) {
+		return runFogit(t, projectDir, args...)
+	}
+
+	// Initialize repository
+	t.Log("Step 1: Initializing repository...")
+	gitCmd := exec.Command("git", "init")
+	gitCmd.Dir = projectDir
+	if out, err := gitCmd.CombinedOutput(); err != nil {
+		t.Fatalf("Failed to init git: %v\n%s", err, out)
+	}
+
+	exec.Command("git", "-C", projectDir, "config", "user.email", "test@example.com").Run()
+	exec.Command("git", "-C", projectDir, "config", "user.name", "Test User").Run()
+
+	if err := os.WriteFile(filepath.Join(projectDir, "README.md"), []byte("# Test\n"), 0644); err != nil {
+		t.Fatalf("Failed to create README: %v", err)
+	}
+	exec.Command("git", "-C", projectDir, "add", ".").Run()
+	exec.Command("git", "-C", projectDir, "commit", "-m", "Initial commit").Run()
+
+	out, err := run("init")
+	if err != nil {
+		t.Fatalf("Failed to init fogit: %v\n%s", err, out)
+	}
+
+	// Configure for simpler testing
+	_, _ = run("config", "set", "workflow.allow_shared_branches", "true")
+	_, _ = run("config", "set", "feature_search.fuzzy_match", "false")
+
+	// Step 2: Create features and a forward/inverse pair
+	t.Log("Step 2: Creating features with forward/inverse relationship pair...")
+	_, err = run("feature", "ServiceA", "--same")
+	if err != nil {
+		t.Fatalf("Failed to create ServiceA: %v", err)
+	}
+
+	_, err = run("feature", "ServiceB", "--same")
+	if err != nil {
+		t.Fatalf("Failed to create ServiceB: %v", err)
+	}
+
+	// Create depends-on relationship (auto-creates required-by inverse)
+	out, err = run("link", "ServiceA", "ServiceB", "depends-on")
+	if err != nil {
+		t.Fatalf("Failed to create link: %v\n%s", err, out)
+	}
+	t.Logf("Link output: %s", out)
+
+	// Verify inverse was auto-created
+	if !strings.Contains(out, "Auto-created inverse") || !strings.Contains(out, "required-by") {
+		t.Log("Note: Auto-inverse may not be enabled, but test should still pass")
+	}
+
+	// Step 3: Run validate - should NOT report any cycles
+	t.Log("Step 3: Running validate - forward/inverse pairs should NOT be cycles...")
+	out, _ = run("validate")
+	t.Logf("Validate output:\n%s", out)
+
+	// Check that no cycle errors are reported
+	if strings.Contains(out, "E005") || strings.Contains(out, "Cycle detected") {
+		t.Errorf("FAIL: Validate incorrectly reported cycle for forward/inverse pair")
+	} else if strings.Contains(out, "No cycles detected") {
+		t.Log("✓ Forward/inverse pairs correctly NOT flagged as cycles")
+	}
+
+	// Step 4: Create a third feature for real cycle test
+	t.Log("Step 4: Creating third feature for real cycle test...")
+	_, err = run("feature", "ServiceC", "--same")
+	if err != nil {
+		t.Fatalf("Failed to create ServiceC: %v", err)
+	}
+
+	// Create ServiceB -> ServiceC
+	_, err = run("link", "ServiceB", "ServiceC", "depends-on")
+	if err != nil {
+		t.Fatalf("Failed to create link B->C: %v", err)
+	}
+
+	// Step 5: Manually inject a cycle by editing YAML
+	t.Log("Step 5: Manually injecting cycle (ServiceC -> ServiceA) via YAML...")
+
+	// Read ServiceA's ID
+	serviceAFile := filepath.Join(projectDir, ".fogit", "features", "servicea.yml")
+	serviceAData, err := os.ReadFile(serviceAFile)
+	if err != nil {
+		t.Fatalf("Failed to read ServiceA file: %v", err)
+	}
+
+	var serviceAYAML map[string]interface{}
+	if err := yaml.Unmarshal(serviceAData, &serviceAYAML); err != nil {
+		t.Fatalf("Failed to parse ServiceA YAML: %v", err)
+	}
+	serviceAID := serviceAYAML["id"].(string)
+	t.Logf("ServiceA ID: %s", serviceAID)
+
+	// Read and modify ServiceC to add cycle-creating relationship
+	serviceCFile := filepath.Join(projectDir, ".fogit", "features", "servicec.yml")
+	serviceCData, err := os.ReadFile(serviceCFile)
+	if err != nil {
+		t.Fatalf("Failed to read ServiceC file: %v", err)
+	}
+
+	var serviceCYAML map[string]interface{}
+	if err := yaml.Unmarshal(serviceCData, &serviceCYAML); err != nil {
+		t.Fatalf("Failed to parse ServiceC YAML: %v", err)
+	}
+
+	// Add cycle-creating relationship
+	relationships, ok := serviceCYAML["relationships"].([]interface{})
+	if !ok {
+		relationships = []interface{}{}
+	}
+
+	cycleRelationship := map[string]interface{}{
+		"type":        "depends-on",
+		"target_id":   serviceAID,
+		"target_name": "ServiceA",
+		"created_at":  "2026-02-01T00:00:00Z",
+	}
+	relationships = append(relationships, cycleRelationship)
+	serviceCYAML["relationships"] = relationships
+
+	// Write back modified YAML
+	modifiedData, err := yaml.Marshal(serviceCYAML)
+	if err != nil {
+		t.Fatalf("Failed to marshal modified YAML: %v", err)
+	}
+	if err := os.WriteFile(serviceCFile, modifiedData, 0644); err != nil {
+		t.Fatalf("Failed to write modified ServiceC: %v", err)
+	}
+	t.Log("✓ Injected cycle-creating relationship: ServiceC -> ServiceA")
+
+	// Step 6: Run validate - should detect the real cycle
+	t.Log("Step 6: Running validate - should detect real cycle A->B->C->A...")
+	out, _ = run("validate")
+	t.Logf("Validate output:\n%s", out)
+
+	// Should report E005 cycle error
+	if !strings.Contains(out, "E005") && !strings.Contains(out, "Cycle detected") {
+		t.Errorf("FAIL: Validate did not detect the manually injected cycle")
+	} else {
+		t.Log("✓ Real cycle correctly detected by validate")
+	}
+
+	// Verify the cycle path is shown
+	if strings.Contains(out, "ServiceA") && strings.Contains(out, "ServiceB") && strings.Contains(out, "ServiceC") {
+		t.Log("✓ Cycle path correctly shows all involved features")
+	}
+
+	t.Log("✅ Validate cycle detection test completed!")
 }
