@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"github.com/eg3r/fogit/internal/config"
 	"github.com/eg3r/fogit/internal/features"
 	"github.com/eg3r/fogit/internal/git"
+	"github.com/eg3r/fogit/pkg/fogit"
 )
 
 var (
@@ -116,6 +118,13 @@ func runMerge(cmd *cobra.Command, args []string) error {
 	// Execute merge
 	result, err := features.Merge(cmd.Context(), repo, gitRepo, opts)
 	if err != nil {
+		// Wrap merge-related errors for proper exit codes
+		if errors.Is(err, features.ErrMergeInProgress) {
+			return &fogit.MergeInProgressError{Message: err.Error()}
+		}
+		if errors.Is(err, features.ErrNoMergeInProgress) {
+			return &fogit.NoMergeInProgressError{Message: err.Error()}
+		}
 		return err
 	}
 
@@ -127,7 +136,7 @@ func runMerge(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Handle conflict result
+	// Handle conflict result - return non-zero exit code per spec
 	if result.ConflictDetected {
 		fmt.Println("⚠ Merge conflict detected!")
 		fmt.Println("")
@@ -136,7 +145,8 @@ func runMerge(cmd *cobra.Command, args []string) error {
 		fmt.Println("  2. Complete the merge:    fogit merge --continue")
 		fmt.Println("")
 		fmt.Println("Or abort the merge:         fogit merge --abort")
-		return nil
+		// Return error with exit code 9 per spec (08-interface.md)
+		return fogit.NewMergeConflictError(nil)
 	}
 
 	// Output results based on mode

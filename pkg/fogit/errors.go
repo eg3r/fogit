@@ -140,15 +140,18 @@ func IsDuplicateError(err error) bool {
 
 // Exit codes per spec (08-interface.md)
 const (
-	ExitSuccess         = 0 // Command completed successfully
-	ExitGeneralError    = 1 // Unexpected errors, internal failures
-	ExitInvalidArgs     = 2 // Unknown option, invalid syntax, missing required argument
-	ExitNotFound        = 3 // Feature ID/name doesn't exist, relationship target not found
-	ExitValidationError = 4 // Invalid YAML, schema violation, broken relationship reference
-	ExitConfigError     = 5 // Invalid config.yml, missing required config
-	ExitGitError        = 6 // Not a Git repository, Git command failed, hook error
-	ExitConflict        = 7 // Relationship would create cycle, duplicate feature name
-	ExitPermissionError = 8 // Read-only filesystem, file access denied
+	ExitSuccess           = 0  // Command completed successfully
+	ExitGeneralError      = 1  // Unexpected errors, internal failures
+	ExitInvalidArgs       = 2  // Unknown option, invalid syntax, missing required argument
+	ExitNotFound          = 3  // Feature ID/name doesn't exist, relationship target not found
+	ExitValidationError   = 4  // Invalid YAML, schema violation, broken relationship reference
+	ExitConfigError       = 5  // Invalid config.yml, missing required config
+	ExitGitError          = 6  // Not a Git repository, Git command failed, hook error
+	ExitConflict          = 7  // Relationship would create cycle, duplicate feature name
+	ExitPermissionError   = 8  // Read-only filesystem, file access denied
+	ExitMergeConflict     = 9  // Git merge conflict detected, requires resolution
+	ExitMergeInProgress   = 10 // A merge is already in progress (use --continue or --abort)
+	ExitNoMergeInProgress = 11 // --continue or --abort used but no merge is active
 )
 
 // ExitCodeError wraps an error with a specific exit code
@@ -170,6 +173,85 @@ func NewExitCodeError(err error, code int) *ExitCodeError {
 	return &ExitCodeError{Err: err, ExitCode: code}
 }
 
+// MergeConflictError indicates a git merge conflict that requires manual resolution
+type MergeConflictError struct {
+	ConflictFiles []string // Files with conflicts
+	Message       string   // Additional context
+}
+
+func (e *MergeConflictError) Error() string {
+	if e.Message != "" {
+		return e.Message
+	}
+	return "merge conflict detected: resolve conflicts and run 'fogit merge --continue'"
+}
+
+// NewMergeConflictError creates a new MergeConflictError
+func NewMergeConflictError(conflictFiles []string) *MergeConflictError {
+	return &MergeConflictError{ConflictFiles: conflictFiles}
+}
+
+// IsMergeConflictError checks if an error is a merge conflict error
+func IsMergeConflictError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var mergeErr *MergeConflictError
+	return errors.As(err, &mergeErr)
+}
+
+// MergeInProgressError indicates a merge is already in progress
+type MergeInProgressError struct {
+	Message string
+}
+
+func (e *MergeInProgressError) Error() string {
+	if e.Message != "" {
+		return e.Message
+	}
+	return "merge already in progress: use --continue or --abort"
+}
+
+// NewMergeInProgressError creates a new MergeInProgressError
+func NewMergeInProgressError() *MergeInProgressError {
+	return &MergeInProgressError{}
+}
+
+// IsMergeInProgressError checks if an error is a merge in progress error
+func IsMergeInProgressError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var mergeErr *MergeInProgressError
+	return errors.As(err, &mergeErr)
+}
+
+// NoMergeInProgressError indicates --continue or --abort used but no merge is active
+type NoMergeInProgressError struct {
+	Message string
+}
+
+func (e *NoMergeInProgressError) Error() string {
+	if e.Message != "" {
+		return e.Message
+	}
+	return "no merge in progress"
+}
+
+// NewNoMergeInProgressError creates a new NoMergeInProgressError
+func NewNoMergeInProgressError() *NoMergeInProgressError {
+	return &NoMergeInProgressError{}
+}
+
+// IsNoMergeInProgressError checks if an error is a no merge in progress error
+func IsNoMergeInProgressError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var mergeErr *NoMergeInProgressError
+	return errors.As(err, &mergeErr)
+}
+
 // GetExitCode determines the appropriate exit code for an error
 // based on the error type. Returns ExitSuccess (0) for nil errors.
 func GetExitCode(err error) int {
@@ -181,6 +263,17 @@ func GetExitCode(err error) int {
 	var exitErr *ExitCodeError
 	if errors.As(err, &exitErr) {
 		return exitErr.ExitCode
+	}
+
+	// Check for merge-related errors (must be before general error checks)
+	if IsMergeConflictError(err) {
+		return ExitMergeConflict
+	}
+	if IsMergeInProgressError(err) {
+		return ExitMergeInProgress
+	}
+	if IsNoMergeInProgressError(err) {
+		return ExitNoMergeInProgress
 	}
 
 	// Check for not found errors

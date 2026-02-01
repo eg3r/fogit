@@ -216,6 +216,106 @@ func TestErrorsIsCompatibility(t *testing.T) {
 	}
 }
 
+func TestMergeConflictError(t *testing.T) {
+	tests := []struct {
+		name          string
+		err           *MergeConflictError
+		wantMsg       string
+		conflictFiles []string
+	}{
+		{
+			name:          "without files",
+			err:           NewMergeConflictError(nil),
+			wantMsg:       "merge conflict detected: resolve conflicts and run 'fogit merge --continue'",
+			conflictFiles: nil,
+		},
+		{
+			name:          "with files",
+			err:           NewMergeConflictError([]string{"file1.txt", "file2.txt"}),
+			wantMsg:       "merge conflict detected: resolve conflicts and run 'fogit merge --continue'",
+			conflictFiles: []string{"file1.txt", "file2.txt"},
+		},
+		{
+			name:          "with custom message",
+			err:           &MergeConflictError{Message: "custom conflict message"},
+			wantMsg:       "custom conflict message",
+			conflictFiles: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.err.Error(); got != tt.wantMsg {
+				t.Errorf("Error() = %q, want %q", got, tt.wantMsg)
+			}
+			if !IsMergeConflictError(tt.err) {
+				t.Error("IsMergeConflictError() should return true")
+			}
+			if GetExitCode(tt.err) != ExitMergeConflict {
+				t.Errorf("GetExitCode() = %d, want %d", GetExitCode(tt.err), ExitMergeConflict)
+			}
+		})
+	}
+
+	// Test IsMergeConflictError with nil and non-merge errors
+	if IsMergeConflictError(nil) {
+		t.Error("IsMergeConflictError(nil) should return false")
+	}
+	if IsMergeConflictError(errors.New("other error")) {
+		t.Error("IsMergeConflictError(other error) should return false")
+	}
+}
+
+func TestMergeInProgressError(t *testing.T) {
+	err := NewMergeInProgressError()
+	if err.Error() != "merge already in progress: use --continue or --abort" {
+		t.Errorf("Error() = %q, unexpected message", err.Error())
+	}
+
+	customErr := &MergeInProgressError{Message: "custom message"}
+	if customErr.Error() != "custom message" {
+		t.Errorf("Error() = %q, want %q", customErr.Error(), "custom message")
+	}
+
+	if !IsMergeInProgressError(err) {
+		t.Error("IsMergeInProgressError() should return true")
+	}
+	if IsMergeInProgressError(nil) {
+		t.Error("IsMergeInProgressError(nil) should return false")
+	}
+	if IsMergeInProgressError(errors.New("other")) {
+		t.Error("IsMergeInProgressError(other) should return false")
+	}
+	if GetExitCode(err) != ExitMergeInProgress {
+		t.Errorf("GetExitCode() = %d, want %d", GetExitCode(err), ExitMergeInProgress)
+	}
+}
+
+func TestNoMergeInProgressError(t *testing.T) {
+	err := NewNoMergeInProgressError()
+	if err.Error() != "no merge in progress" {
+		t.Errorf("Error() = %q, unexpected message", err.Error())
+	}
+
+	customErr := &NoMergeInProgressError{Message: "custom message"}
+	if customErr.Error() != "custom message" {
+		t.Errorf("Error() = %q, want %q", customErr.Error(), "custom message")
+	}
+
+	if !IsNoMergeInProgressError(err) {
+		t.Error("IsNoMergeInProgressError() should return true")
+	}
+	if IsNoMergeInProgressError(nil) {
+		t.Error("IsNoMergeInProgressError(nil) should return false")
+	}
+	if IsNoMergeInProgressError(errors.New("other")) {
+		t.Error("IsNoMergeInProgressError(other) should return false")
+	}
+	if GetExitCode(err) != ExitNoMergeInProgress {
+		t.Errorf("GetExitCode() = %d, want %d", GetExitCode(err), ExitNoMergeInProgress)
+	}
+}
+
 func TestGetExitCode(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -238,6 +338,11 @@ func TestGetExitCode(t *testing.T) {
 		{"ErrRepositoryNotInitialized", ErrRepositoryNotInitialized, ExitConfigError},
 		{"explicit ExitCodeError", NewExitCodeError(errors.New("git failed"), ExitGitError), ExitGitError},
 		{"wrapped not found", fmt.Errorf("failed: %w", ErrNotFound), ExitNotFound},
+		// Merge-related errors (exit codes 9, 10, 11)
+		{"MergeConflictError", NewMergeConflictError(nil), ExitMergeConflict},
+		{"MergeConflictError with files", NewMergeConflictError([]string{"file1.txt", "file2.txt"}), ExitMergeConflict},
+		{"MergeInProgressError", NewMergeInProgressError(), ExitMergeInProgress},
+		{"NoMergeInProgressError", NewNoMergeInProgressError(), ExitNoMergeInProgress},
 	}
 
 	for _, tt := range tests {
@@ -278,27 +383,33 @@ func TestExitCodeError(t *testing.T) {
 func TestExitCodeConstants(t *testing.T) {
 	// Verify exit codes match spec (08-interface.md)
 	expected := map[string]int{
-		"ExitSuccess":         0,
-		"ExitGeneralError":    1,
-		"ExitInvalidArgs":     2,
-		"ExitNotFound":        3,
-		"ExitValidationError": 4,
-		"ExitConfigError":     5,
-		"ExitGitError":        6,
-		"ExitConflict":        7,
-		"ExitPermissionError": 8,
+		"ExitSuccess":           0,
+		"ExitGeneralError":      1,
+		"ExitInvalidArgs":       2,
+		"ExitNotFound":          3,
+		"ExitValidationError":   4,
+		"ExitConfigError":       5,
+		"ExitGitError":          6,
+		"ExitConflict":          7,
+		"ExitPermissionError":   8,
+		"ExitMergeConflict":     9,
+		"ExitMergeInProgress":   10,
+		"ExitNoMergeInProgress": 11,
 	}
 
 	actual := map[string]int{
-		"ExitSuccess":         ExitSuccess,
-		"ExitGeneralError":    ExitGeneralError,
-		"ExitInvalidArgs":     ExitInvalidArgs,
-		"ExitNotFound":        ExitNotFound,
-		"ExitValidationError": ExitValidationError,
-		"ExitConfigError":     ExitConfigError,
-		"ExitGitError":        ExitGitError,
-		"ExitConflict":        ExitConflict,
-		"ExitPermissionError": ExitPermissionError,
+		"ExitSuccess":           ExitSuccess,
+		"ExitGeneralError":      ExitGeneralError,
+		"ExitInvalidArgs":       ExitInvalidArgs,
+		"ExitNotFound":          ExitNotFound,
+		"ExitValidationError":   ExitValidationError,
+		"ExitConfigError":       ExitConfigError,
+		"ExitGitError":          ExitGitError,
+		"ExitConflict":          ExitConflict,
+		"ExitPermissionError":   ExitPermissionError,
+		"ExitMergeConflict":     ExitMergeConflict,
+		"ExitMergeInProgress":   ExitMergeInProgress,
+		"ExitNoMergeInProgress": ExitNoMergeInProgress,
 	}
 
 	for name, want := range expected {
