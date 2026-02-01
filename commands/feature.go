@@ -78,6 +78,7 @@ var (
 	featureParent      string
 	featureSame        bool   // Stay on current branch (shared strategy)
 	featureIsolate     bool   // Create new branch (isolated strategy)
+	featureFromCurrent bool   // Override create_branch_from, create from current branch
 	featureVersion     string // Explicit version number (e.g., "5" or "2.0.0")
 	featurePatch       bool   // Increment patch version (semantic only)
 	featureMinor       bool   // Increment minor version
@@ -101,6 +102,7 @@ func registerFeatureFlags(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&featureParent, "parent", "", "Parent feature ID or name")
 	cmd.Flags().BoolVar(&featureSame, "same", false, "Stay on current branch (shared strategy, requires allow_shared_branches: true)")
 	cmd.Flags().BoolVar(&featureIsolate, "isolate", false, "Create new branch (isolated strategy, overrides default)")
+	cmd.Flags().BoolVar(&featureFromCurrent, "from-current", false, "Create branch from current branch (overrides workflow.create_branch_from)")
 }
 
 func init() {
@@ -129,11 +131,10 @@ func runFeature(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	repo := cmdCtx.Repo
 	cfg := cmdCtx.Config
 
-	// Get all features for fuzzy search
-	allFeatures, err := repo.List(cmd.Context(), nil)
+	// Get all features using cross-branch discovery
+	allFeatures, err := ListFeaturesCrossBranch(cmd.Context(), cmdCtx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to list features: %w", err)
 	}
@@ -270,7 +271,7 @@ func handleClosedFeature(cmd *cobra.Command, feature *fogit.Feature, cmdCtx *Com
 	}
 
 	// Handle branch creation
-	if err := features.HandleBranchCreation(feature.Name, cfg, featureSame, featureIsolate); err != nil {
+	if err := features.HandleBranchCreation(feature.Name, cfg, featureSame, featureIsolate, featureFromCurrent); err != nil {
 		logger.Warn("branch creation issue", "error", err)
 	}
 
@@ -308,6 +309,7 @@ func createFeature(cmd *cobra.Command, name string, cmdCtx *CommandContext) erro
 		ParentID:      featureParent,
 		SameBranch:    featureSame,
 		IsolateBranch: featureIsolate,
+		FromCurrent:   featureFromCurrent,
 	}
 
 	// Parse metadata key=value pairs

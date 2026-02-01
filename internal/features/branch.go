@@ -29,8 +29,14 @@ func SanitizeBranchName(name string) string {
 	return fmt.Sprintf("feature/%s", slug)
 }
 
-// HandleBranchCreation creates and checks out a Git branch for the feature if needed
-func HandleBranchCreation(featureName string, cfg *fogit.Config, sameBranch, isolateBranch bool) error {
+// HandleBranchCreation creates and checks out a Git branch for the feature if needed.
+// Parameters:
+//   - featureName: the name of the feature (used to generate branch name)
+//   - cfg: the fogit configuration
+//   - sameBranch: --same flag (create on current branch, shared strategy)
+//   - isolateBranch: --isolate flag (force new branch)
+//   - fromCurrent: --from-current flag (override create_branch_from, create from wherever you are)
+func HandleBranchCreation(featureName string, cfg *fogit.Config, sameBranch, isolateBranch, fromCurrent bool) error {
 	action, err := DetermineBranchAction(cfg.Workflow.Mode, cfg.Workflow.AllowSharedBranches, sameBranch, isolateBranch)
 	if err != nil {
 		return err
@@ -90,6 +96,13 @@ func HandleBranchCreation(featureName string, cfg *fogit.Config, sameBranch, iso
 			return fmt.Errorf("failed to open git repository: %w", err)
 		}
 
+		// Handle create_branch_from strategy (unless --from-current is set)
+		if !fromCurrent {
+			if err := handleCreateBranchFromStrategy(gitRepo, cfg); err != nil {
+				return err
+			}
+		}
+
 		// Create the branch
 		if err := gitRepo.CreateBranch(branchName); err != nil {
 			if err == git.ErrBranchExists {
@@ -108,6 +121,55 @@ func HandleBranchCreation(featureName string, cfg *fogit.Config, sameBranch, iso
 
 		fmt.Printf("✓ Created and checked out branch: %s\n", branchName)
 		return nil
+	}
+
+	return nil
+}
+
+// handleCreateBranchFromStrategy ensures we're on the right branch before creating a feature branch.
+// Based on workflow.create_branch_from setting:
+//   - "trunk": switch to base_branch if not already on it
+//   - "warn": warn if not on base_branch but continue from current
+//   - "current": do nothing (create from wherever you are)
+func handleCreateBranchFromStrategy(gitRepo *git.Repository, cfg *fogit.Config) error {
+	createBranchFrom := cfg.Workflow.CreateBranchFrom
+	if createBranchFrom == "" {
+		createBranchFrom = "trunk" // Default
+	}
+
+	// "current" means create from wherever you are - nothing to do
+	if createBranchFrom == "current" {
+		return nil
+	}
+
+	currentBranch, err := gitRepo.GetCurrentBranch()
+	if err != nil {
+		return fmt.Errorf("failed to get current branch: %w", err)
+	}
+
+	baseBranch := cfg.Workflow.BaseBranch
+	if baseBranch == "" {
+		baseBranch = "main"
+	}
+
+	// Already on base branch - nothing to do
+	if currentBranch == baseBranch {
+		return nil
+	}
+
+	switch createBranchFrom {
+	case "trunk":
+		// Switch to base branch before creating feature branch
+		fmt.Printf("Switching to %s before creating feature branch...\n", baseBranch)
+		if err := gitRepo.CheckoutBranch(baseBranch); err != nil {
+			return fmt.Errorf("failed to switch to %s: %w\nUse --from-current to create from current branch", baseBranch, err)
+		}
+
+	case "warn":
+		// Warn but continue from current branch
+		fmt.Printf("⚠️  Warning: Creating feature branch from '%s' instead of '%s'\n", currentBranch, baseBranch)
+		fmt.Printf("   This may cause stale feature state on this branch.\n")
+		fmt.Printf("   Use --from-current to suppress this warning, or switch to %s first.\n", baseBranch)
 	}
 
 	return nil

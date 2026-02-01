@@ -51,8 +51,8 @@ func runDelete(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Find feature by ID or name using the consolidated helper
-	feature, err := FindFeatureWithSuggestions(cmd.Context(), cmdCtx.Repo, identifier, cmdCtx.Config, "fogit delete <id>")
+	// Find feature using cross-branch discovery
+	feature, err := FindFeatureCrossBranch(cmd.Context(), cmdCtx, identifier, "fogit delete <id>")
 	if err != nil {
 		return err
 	}

@@ -53,6 +53,11 @@ type Repository struct {
 	path string
 }
 
+// Path returns the filesystem path to the repository
+func (r *Repository) Path() string {
+	return r.path
+}
+
 // OpenRepository opens a Git repository at the given path
 func OpenRepository(path string) (*Repository, error) {
 	repo, err := git.PlainOpen(path)
@@ -235,7 +240,9 @@ func (r *Repository) GetChangedFiles() ([]string, error) {
 	}
 
 	var files []string
-	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	// Use TrimRight to only remove trailing newlines, preserving leading spaces
+	// which are significant in git status porcelain format (e.g., " M file" for worktree modified)
+	lines := strings.Split(strings.TrimRight(string(output), "\r\n"), "\n")
 	for _, line := range lines {
 		if len(line) < 3 {
 			continue
@@ -249,6 +256,19 @@ func (r *Repository) GetChangedFiles() ([]string, error) {
 	}
 
 	return files, nil
+}
+
+// DiscardChanges discards uncommitted changes to a specific file.
+// Uses git checkout -- <file> to restore the file to its last committed state.
+func (r *Repository) DiscardChanges(filePath string) error {
+	cmd := exec.Command("git", "checkout", "--", filePath)
+	cmd.Dir = r.path
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to discard changes to %s: %w", filePath, err)
+	}
+
+	return nil
 }
 
 // ErrMergeConflict is returned when a merge has conflicts

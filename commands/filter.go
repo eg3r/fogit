@@ -103,8 +103,8 @@ func runFilter(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// List all features (no filter - we'll apply expression filter)
-	allFeatures, err := cmdCtx.Repo.List(cmd.Context(), nil)
+	// List all features using cross-branch discovery (no filter - we'll apply expression filter)
+	allFeatures, err := ListFeaturesCrossBranch(cmd.Context(), cmdCtx, nil)
 	if err != nil {
 		return fmt.Errorf("failed to list features: %w", err)
 	}

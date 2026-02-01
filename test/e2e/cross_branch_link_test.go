@@ -65,8 +65,15 @@ func TestCrossBranch_LinkSourceNotOnCurrentBranch(t *testing.T) {
 		t.Fatalf("Failed to init fogit: %v\nOutput: %s", err, output)
 	}
 
-	// Disable fuzzy matching
+	// Disable fuzzy matching and set create_branch_from to current for test stability
 	_, _ = runFogit(t, projectDir, "config", "set", "feature_search.fuzzy_match", "false")
+	_, _ = runFogit(t, projectDir, "config", "set", "workflow.create_branch_from", "current")
+
+	// Commit config changes so they persist across branch switches
+	_, _ = worktree.Add(".fogit/config.yml")
+	_, _ = worktree.Commit("Configure fogit for testing", &gogit.CommitOptions{
+		Author: &object.Signature{Name: "Test User", Email: "test@example.com", When: time.Now()},
+	})
 
 	// Get the main branch name
 	mainBranch := "master"
@@ -236,8 +243,15 @@ func TestCrossBranch_LinkFeatureFromDifferentBranch(t *testing.T) {
 		t.Fatalf("Failed to init fogit: %v\nOutput: %s", err, output)
 	}
 
-	// Disable fuzzy matching to avoid interactive prompts
+	// Disable fuzzy matching and set create_branch_from to current for test stability
 	_, _ = runFogit(t, projectDir, "config", "set", "feature_search.fuzzy_match", "false")
+	_, _ = runFogit(t, projectDir, "config", "set", "workflow.create_branch_from", "current")
+
+	// Commit config changes so they persist across branch switches
+	_, _ = worktree.Add(".fogit/config.yml")
+	_, _ = worktree.Commit("Configure fogit for testing", &gogit.CommitOptions{
+		Author: &object.Signature{Name: "Test User", Email: "test@example.com", When: time.Now()},
+	})
 
 	// Step 3: Create Feature A (User Authentication) - creates its own branch from main
 	// This creates branch feature/user-authentication and stores YAML there
@@ -350,8 +364,15 @@ func TestCrossBranch_LinkBothDirections(t *testing.T) {
 		t.Fatalf("Failed to init fogit: %v\nOutput: %s", err, output)
 	}
 
-	// Disable fuzzy matching to avoid interactive prompts during test
+	// Disable fuzzy matching and set create_branch_from to current for test stability
 	_, _ = runFogit(t, projectDir, "config", "set", "feature_search.fuzzy_match", "false")
+	_, _ = runFogit(t, projectDir, "config", "set", "workflow.create_branch_from", "current")
+
+	// Commit config changes so they persist across branch switches
+	_, _ = worktree.Add(".fogit/config.yml")
+	_, _ = worktree.Commit("Configure fogit for testing", &gogit.CommitOptions{
+		Author: &object.Signature{Name: "Test User", Email: "test@example.com", When: time.Now()},
+	})
 
 	// Create three features on separate branches
 	t.Log("Creating Authentication Feature...")

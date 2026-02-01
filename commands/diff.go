@@ -59,8 +59,8 @@ func runDiff(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Find feature using the consolidated helper
-	feature, err := FindFeatureWithSuggestions(cmd.Context(), cmdCtx.Repo, nameOrID, cmdCtx.Config, "fogit diff <id>")
+	// Find feature using cross-branch discovery
+	feature, err := FindFeatureCrossBranch(cmd.Context(), cmdCtx, nameOrID, "fogit diff <id>")
 	if err != nil {
 		return err
 	}

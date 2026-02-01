@@ -2,14 +2,11 @@ package commands
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
 	"github.com/eg3r/fogit/internal/common"
 	"github.com/eg3r/fogit/internal/features"
-	"github.com/eg3r/fogit/internal/printer"
-	"github.com/eg3r/fogit/pkg/fogit"
 )
 
 var (
@@ -79,19 +76,11 @@ func runUpdate(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get command context: %w", err)
 	}
 
-	// Find feature by ID or name
-	result, err := features.Find(cmd.Context(), cmdCtx.Repo, identifier, cmdCtx.Config)
+	// Find feature using cross-branch discovery
+	feature, err := FindFeatureCrossBranch(cmd.Context(), cmdCtx, identifier, "fogit update <id> ...")
 	if err != nil {
-		if err == fogit.ErrNotFound && result != nil && len(result.Suggestions) > 0 {
-			printer.PrintSuggestions(os.Stdout, identifier, result.Suggestions, "fogit update <id> ...")
-			return fmt.Errorf("feature not found")
-		}
-		if err == fogit.ErrNotFound {
-			return fmt.Errorf("feature not found: %s", identifier)
-		}
-		return fmt.Errorf("failed to find feature: %w", err)
+		return err
 	}
-	feature := result.Feature
 
 	// Prepare update options
 	opts := features.UpdateOptions{}

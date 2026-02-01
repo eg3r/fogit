@@ -31,8 +31,8 @@ Example:
 			return err
 		}
 
-		// Find feature using the consolidated helper
-		feature, err := FindFeatureWithSuggestions(cmd.Context(), cmdCtx.Repo, nameOrID, cmdCtx.Config, "fogit versions <id>")
+		// Find feature using cross-branch discovery
+		feature, err := FindFeatureCrossBranch(cmd.Context(), cmdCtx, nameOrID, "fogit versions <id>")
 		if err != nil {
 			return err
 		}

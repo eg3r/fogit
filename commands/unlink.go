@@ -64,16 +64,11 @@ func runUnlink(cmd *cobra.Command, args []string) error {
 
 	ctx := cmd.Context()
 
-	// Find source feature
-	sourceResult, err := features.Find(ctx, cmdCtx.Repo, sourceIdentifier, cmdCtx.Config)
+	// Find source feature using cross-branch discovery
+	source, err := FindFeatureCrossBranch(ctx, cmdCtx, sourceIdentifier, "fogit unlink <id> ...")
 	if err != nil {
-		if err == fogit.ErrNotFound && sourceResult != nil && len(sourceResult.Suggestions) > 0 {
-			printer.PrintSuggestions(os.Stdout, sourceIdentifier, sourceResult.Suggestions, "fogit unlink <id> ...")
-			return fmt.Errorf("source feature not found")
-		}
 		return fmt.Errorf("source feature not found: %w", err)
 	}
-	source := sourceResult.Feature
 
 	// Handle removal by relationship ID
 	if unlinkByID {
@@ -104,16 +99,11 @@ func runUnlink(cmd *cobra.Command, args []string) error {
 		relType = fogit.RelationshipType(args[2])
 	}
 
-	// Find target feature
-	targetResult, err := features.Find(ctx, cmdCtx.Repo, targetIdentifier, cmdCtx.Config)
+	// Find target feature using cross-branch discovery
+	target, err := FindFeatureCrossBranch(ctx, cmdCtx, targetIdentifier, "fogit unlink ... <id> ...")
 	if err != nil {
-		if err == fogit.ErrNotFound && targetResult != nil && len(targetResult.Suggestions) > 0 {
-			printer.PrintSuggestions(os.Stdout, targetIdentifier, targetResult.Suggestions, "fogit unlink ... <id> ...")
-			return fmt.Errorf("target feature not found")
-		}
 		return fmt.Errorf("target feature not found: %w", err)
 	}
-	target := targetResult.Feature
 
 	// Remove by target
 	removedRel, err := features.UnlinkByTarget(ctx, cmdCtx.Repo, source, target, relType, cmdCtx.FogitDir, cmdCtx.Config)

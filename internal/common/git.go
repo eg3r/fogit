@@ -11,9 +11,10 @@ var TrunkBranchCandidates = []string{"main", "master", "trunk"}
 // DetectTrunkBranch detects the trunk/main branch using Git's native methods.
 // Priority order:
 // 1. Remote HEAD reference (refs/remotes/origin/HEAD) - most reliable for cloned repos
-// 2. Current branch if it's main or master - common during fresh init
-// 3. Git's configured default branch (init.defaultBranch)
-// 4. Check if main or master branch exists locally
+// 2. Current branch via symbolic-ref (works even before first commit)
+// 3. Current branch via rev-parse (works after first commit)
+// 4. Git's configured default branch (init.defaultBranch)
+// 5. Check if main or master branch exists locally
 // Falls back to "main" if nothing found.
 func DetectTrunkBranch(repoPath string) string {
 	// Method 1: Check remote HEAD (most reliable for cloned repos)
@@ -27,7 +28,19 @@ func DetectTrunkBranch(repoPath string) string {
 		}
 	}
 
-	// Method 2: Check current branch - if we're on main/master, use that
+	// Method 2: Check current branch via symbolic-ref (works before first commit)
+	// Output is like "refs/heads/master\n"
+	cmd = exec.Command("git", "-C", repoPath, "symbolic-ref", "HEAD")
+	if output, err := cmd.Output(); err == nil {
+		ref := strings.TrimSpace(string(output))
+		if branch := strings.TrimPrefix(ref, "refs/heads/"); branch != ref {
+			if IsTrunkBranch(branch) {
+				return branch
+			}
+		}
+	}
+
+	// Method 3: Check current branch via rev-parse (works after first commit)
 	cmd = exec.Command("git", "-C", repoPath, "rev-parse", "--abbrev-ref", "HEAD")
 	if output, err := cmd.Output(); err == nil {
 		currentBranch := strings.TrimSpace(string(output))
@@ -36,7 +49,7 @@ func DetectTrunkBranch(repoPath string) string {
 		}
 	}
 
-	// Method 3: Check Git's configured default branch
+	// Method 4: Check Git's configured default branch
 	cmd = exec.Command("git", "-C", repoPath, "config", "--get", "init.defaultBranch")
 	if output, err := cmd.Output(); err == nil {
 		defaultBranch := strings.TrimSpace(string(output))
@@ -45,7 +58,7 @@ func DetectTrunkBranch(repoPath string) string {
 		}
 	}
 
-	// Method 4: Check if main or master exists locally
+	// Method 5: Check if main or master exists locally
 	// Note: branch is from a hard-coded list, not user input, so this is safe
 	for _, branch := range TrunkBranchCandidates {
 		cmd = exec.Command("git", "-C", repoPath, "rev-parse", "--verify", "refs/heads/"+branch) //nolint:gosec // branch is from hard-coded list

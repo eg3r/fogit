@@ -52,8 +52,15 @@ func TestCrossBranch_CommandsDiscovery(t *testing.T) {
 		t.Fatalf("Failed to init fogit: %v\nOutput: %s", err, output)
 	}
 
-	// Disable fuzzy matching
+	// Disable fuzzy matching and set create_branch_from to current for test stability
 	_, _ = runFogit(t, projectDir, "config", "set", "feature_search.fuzzy_match", "false")
+	_, _ = runFogit(t, projectDir, "config", "set", "workflow.create_branch_from", "current")
+
+	// Commit config changes so they persist across branch switches
+	_, _ = worktree.Add(".fogit/config.yml")
+	_, _ = worktree.Commit("Configure fogit for testing", &gogit.CommitOptions{
+		Author: &object.Signature{Name: "Test User", Email: "test@example.com", When: time.Now()},
+	})
 
 	// Get main branch name
 	mainBranch := "master"

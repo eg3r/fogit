@@ -290,6 +290,100 @@ versions:
 	}
 }
 
+func TestListFeaturesAcrossBranches_MostRecentWins(t *testing.T) {
+	// Test that when same feature exists on multiple branches,
+	// the version with most recent modified_at wins (fixes state inconsistency bug)
+	repoPath, gitRepo := setupCrossBranchTestRepo(t)
+
+	// Create initial commit
+	createTestCommitInRepo(t, repoPath, "README.md", "# Test", "Initial commit")
+
+	// Create feature-a on its own branch with OLDER timestamp (simulating stale snapshot)
+	cmd := exec.Command("git", "checkout", "-b", "feature/feature-a")
+	cmd.Dir = repoPath
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to create feature/feature-a branch: %v", err)
+	}
+
+	// Feature A: created with work done (in-progress state), newer modified_at
+	featureAYAML := `id: feature-a-id
+name: Feature A
+metadata:
+  priority: high
+versions:
+  "1":
+    created_at: 2025-01-01T00:00:00Z
+    modified_at: 2025-01-15T12:00:00Z
+`
+	createTestCommitInRepo(t, repoPath, ".fogit/features/feature-a.yml", featureAYAML, "Add feature A (in-progress)")
+
+	// Create feature-b branch FROM feature-a (includes stale snapshot of feature-a)
+	cmd = exec.Command("git", "checkout", "-b", "feature/feature-b")
+	cmd.Dir = repoPath
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("failed to create feature/feature-b branch: %v", err)
+	}
+
+	// Simulate stale snapshot: overwrite feature-a with OLDER modified_at (open state)
+	featureAStaleYAML := `id: feature-a-id
+name: Feature A
+metadata:
+  priority: high
+versions:
+  "1":
+    created_at: 2025-01-01T00:00:00Z
+    modified_at: 2025-01-01T00:00:00Z
+`
+	createTestCommitInRepo(t, repoPath, ".fogit/features/feature-a.yml", featureAStaleYAML, "Stale snapshot of feature A")
+
+	// Add feature B
+	featureBYAML := `id: feature-b-id
+name: Feature B
+metadata:
+  priority: medium
+versions:
+  "1":
+    created_at: 2025-01-10T00:00:00Z
+    modified_at: 2025-01-10T00:00:00Z
+`
+	createTestCommitInRepo(t, repoPath, ".fogit/features/feature-b.yml", featureBYAML, "Add feature B")
+
+	// Now on feature/feature-b, list all features
+	// Feature A should use the NEWER version from feature/feature-a (in-progress)
+	// NOT the stale version on current branch (open)
+	fogitDir := filepath.Join(repoPath, ".fogit")
+	storageRepo := storage.NewFileRepository(fogitDir)
+
+	crossBranchFeatures, err := ListFeaturesAcrossBranches(context.Background(), storageRepo, gitRepo)
+	if err != nil {
+		t.Fatalf("ListFeaturesAcrossBranches() error = %v", err)
+	}
+
+	// Find feature A
+	var featureA *CrossBranchFeature
+	for _, cbf := range crossBranchFeatures {
+		if cbf.Feature.ID == "feature-a-id" {
+			featureA = cbf
+			break
+		}
+	}
+
+	if featureA == nil {
+		t.Fatal("Feature A not found")
+	}
+
+	// Verify: Feature A should come from feature/feature-a (newer modified_at)
+	if featureA.Branch != "feature/feature-a" {
+		t.Errorf("Feature A branch = %q, expected 'feature/feature-a' (most recent modified_at)", featureA.Branch)
+	}
+
+	// Verify: Feature A should be in-progress (modified_at > created_at)
+	state := featureA.Feature.DeriveState()
+	if state != fogit.StateInProgress {
+		t.Errorf("Feature A state = %q, expected 'in-progress' (most recent version should win)", state)
+	}
+}
+
 func TestFindAcrossBranches_CurrentBranchFirst(t *testing.T) {
 	// Test that features on the current branch are found first
 	repoPath, gitRepo := setupCrossBranchTestRepo(t)

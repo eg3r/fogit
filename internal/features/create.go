@@ -25,6 +25,7 @@ type CreateOptions struct {
 	// Git options
 	SameBranch    bool
 	IsolateBranch bool
+	FromCurrent   bool // Override create_branch_from, create from current branch
 }
 
 func Create(ctx context.Context, repo fogit.Repository, opts CreateOptions, cfg *fogit.Config, fogitDir string) (*fogit.Feature, error) {
@@ -83,7 +84,7 @@ func Create(ctx context.Context, repo fogit.Repository, opts CreateOptions, cfg 
 	}
 
 	// Handle Git branch creation
-	if err := HandleBranchCreation(opts.Name, cfg, opts.SameBranch, opts.IsolateBranch); err != nil {
+	if err := HandleBranchCreation(opts.Name, cfg, opts.SameBranch, opts.IsolateBranch, opts.FromCurrent); err != nil {
 		return nil, err
 	}
 

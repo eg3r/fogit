@@ -109,6 +109,7 @@ func TestBranchCreation_Integration(t *testing.T) {
 				Workflow: fogit.WorkflowConfig{
 					Mode:                tt.mode,
 					BaseBranch:          "main",
+					CreateBranchFrom:    "current", // Use current to avoid branch switching in tests
 					AllowSharedBranches: tt.allowShared,
 				},
 			}
@@ -192,6 +193,7 @@ func TestBranchCreation_BranchExists(t *testing.T) {
 		Workflow: fogit.WorkflowConfig{
 			Mode:                "branch-per-feature",
 			BaseBranch:          "main",
+			CreateBranchFrom:    "current", // Use current to avoid branch switching in tests
 			AllowSharedBranches: true,
 		},
 	}
@@ -262,6 +264,7 @@ func TestBranchCreation_WithUnstagedChanges(t *testing.T) {
 		Workflow: fogit.WorkflowConfig{
 			Mode:                "branch-per-feature",
 			BaseBranch:          "main",
+			CreateBranchFrom:    "current", // Use current to avoid branch switching in tests
 			AllowSharedBranches: true,
 		},
 	}

@@ -29,6 +29,7 @@ Supported configuration keys:
   workflow.mode                     - Workflow mode ('branch-per-feature' or 'trunk-based')
   workflow.allow_shared_branches    - Allow --same flag (true/false)
   workflow.base_branch              - Base branch for features
+  workflow.create_branch_from       - Where to create branches from ('trunk', 'warn', 'current')
   workflow.version_format           - Version format ('simple' or 'semantic')
   feature_search.fuzzy_match        - Enable fuzzy matching (true/false)
   feature_search.min_similarity     - Minimum similarity threshold (0.0-1.0)
@@ -120,6 +121,9 @@ func listConfig(cfg *fogit.Config) error {
 	if cfg.Workflow.BaseBranch != "" {
 		fmt.Printf("  base_branch = %s\n", cfg.Workflow.BaseBranch)
 	}
+	if cfg.Workflow.CreateBranchFrom != "" {
+		fmt.Printf("  create_branch_from = %s\n", cfg.Workflow.CreateBranchFrom)
+	}
 	fmt.Printf("  version_format = %s\n", cfg.Workflow.VersionFormat)
 	fmt.Println()
 
@@ -188,6 +192,8 @@ func getConfigValue(cfg *fogit.Config, key string) (string, error) {
 		return fmt.Sprintf("%v", cfg.Workflow.AllowSharedBranches), nil
 	case "workflow.base_branch":
 		return cfg.Workflow.BaseBranch, nil
+	case "workflow.create_branch_from":
+		return cfg.Workflow.CreateBranchFrom, nil
 	case "workflow.version_format":
 		return cfg.Workflow.VersionFormat, nil
 	case "feature_search.fuzzy_match":
@@ -217,6 +223,11 @@ func setConfigValue(cfg *fogit.Config, key, value string) error {
 		cfg.Workflow.AllowSharedBranches = parseBool(value)
 	case "workflow.base_branch":
 		cfg.Workflow.BaseBranch = value
+	case "workflow.create_branch_from":
+		if value != "trunk" && value != "warn" && value != "current" {
+			return fmt.Errorf("invalid workflow.create_branch_from: %s (must be 'trunk', 'warn', or 'current')", value)
+		}
+		cfg.Workflow.CreateBranchFrom = value
 	case "workflow.version_format":
 		if value != "simple" && value != "semantic" {
 			return fmt.Errorf("invalid workflow.version_format: %s (must be 'simple' or 'semantic')", value)
@@ -271,6 +282,8 @@ func unsetConfigValue(cfg *fogit.Config, key string) error {
 		cfg.Workflow.AllowSharedBranches = false // Reset to default
 	case "workflow.base_branch":
 		cfg.Workflow.BaseBranch = ""
+	case "workflow.create_branch_from":
+		cfg.Workflow.CreateBranchFrom = "trunk" // Reset to default
 	case "workflow.version_format":
 		cfg.Workflow.VersionFormat = "simple" // Reset to default
 	case "feature_search.fuzzy_match":

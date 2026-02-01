@@ -94,8 +94,8 @@ func getFogitDir() (string, error) {
 }
 
 // FindFeatureWithSuggestions finds a feature by ID/name and handles error display with suggestions.
-// This consolidates the repeated error handling pattern across commands.
-// The suggestCmd parameter is used in the suggestion message (e.g., "fogit show <id>").
+// DEPRECATED: Use FindFeatureCrossBranch instead for cross-branch discovery support.
+// This function only searches the current branch.
 func FindFeatureWithSuggestions(ctx context.Context, repo fogit.Repository, identifier string, cfg *fogit.Config, suggestCmd string) (*fogit.Feature, error) {
 	result, err := features.Find(ctx, repo, identifier, cfg)
 	if err != nil {
@@ -109,6 +109,12 @@ func FindFeatureWithSuggestions(ctx context.Context, repo fogit.Repository, iden
 		return nil, fmt.Errorf("failed to find feature: %w", err)
 	}
 	return result.Feature, nil
+}
+
+// FindFeatureForCommand finds a feature using cross-branch discovery (in branch-per-feature mode)
+// with suggestion support. This is the recommended function for all commands that look up features.
+func FindFeatureForCommand(ctx context.Context, cmdCtx *CommandContext, identifier string, suggestCmd string) (*fogit.Feature, error) {
+	return FindFeatureCrossBranch(ctx, cmdCtx, identifier, suggestCmd)
 }
 
 // FindFeatureCrossBranch finds a feature using cross-branch discovery in branch-per-feature mode.

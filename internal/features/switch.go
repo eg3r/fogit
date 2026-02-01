@@ -127,14 +127,37 @@ func switchToBranch(feature *fogit.Feature, gitRepo *git.Repository) (*SwitchRes
 		}, nil
 	}
 
-	// Check for uncommitted changes
+	// Check for uncommitted changes (excluding fogit internal files)
 	changedFiles, err := gitRepo.GetChangedFiles()
 	if err != nil {
 		return nil, fmt.Errorf("failed to check for changes: %w", err)
 	}
 
-	if len(changedFiles) > 0 {
+	// Separate user changes from fogit internal changes
+	var userChangedFiles []string
+	var fogitInternalFiles []string
+	for _, f := range changedFiles {
+		// Check if it's a .fogit metadata/cache file that can be safely discarded
+		if strings.HasPrefix(f, ".fogit/metadata/") || strings.HasPrefix(f, ".fogit/cache/") {
+			fogitInternalFiles = append(fogitInternalFiles, f)
+			continue
+		}
+		userChangedFiles = append(userChangedFiles, f)
+	}
+
+	if len(userChangedFiles) > 0 {
 		return nil, fmt.Errorf("uncommitted changes detected. Please commit or stash your changes before switching:\n  git stash\n  fogit switch %s\n  git stash pop", feature.Name)
+	}
+
+	// Discard changes to fogit internal files (they're regenerated automatically)
+	// This prevents git checkout from failing due to modified cache files
+	if len(fogitInternalFiles) > 0 {
+		for _, f := range fogitInternalFiles {
+			if err := gitRepo.DiscardChanges(f); err != nil {
+				// Non-fatal, continue anyway
+				continue
+			}
+		}
 	}
 
 	// Switch to the feature's branch

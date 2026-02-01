@@ -61,8 +61,8 @@ func runFiles(cmd *cobra.Command, args []string) error {
 		return validateErr
 	}
 
-	// List all features
-	allFeatures, listErr := cmdCtx.Repo.List(cmd.Context(), filter)
+	// List all features using cross-branch discovery
+	allFeatures, listErr := ListFeaturesCrossBranch(cmd.Context(), cmdCtx, filter)
 	if listErr != nil {
 		return fmt.Errorf("failed to list features: %w", listErr)
 	}

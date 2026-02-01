@@ -2,6 +2,7 @@ package e2e
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -113,12 +114,15 @@ go 1.23
 	baseBranch := head.Name().Short()
 	t.Logf("Base branch: %s", baseBranch)
 
-	if baseBranch != "main" {
-		output, err = runFogit(t, projectDir, "config", "set", "workflow.base_branch", baseBranch)
-		if err != nil {
-			t.Fatalf("Failed to set base branch: %v\nOutput: %s", err, output)
-		}
-	}
+	// Configure workflow settings for test stability
+	_, _ = runFogit(t, projectDir, "config", "set", "workflow.base_branch", baseBranch)
+	_, _ = runFogit(t, projectDir, "config", "set", "workflow.create_branch_from", "trunk") // Use trunk strategy with correct base_branch
+
+	// Commit config changes so they persist across branch switches
+	_, _ = worktree.Add(".fogit/config.yml")
+	_, _ = worktree.Commit("Configure fogit for testing", &gogit.CommitOptions{
+		Author: &object.Signature{Name: "Test User", Email: "test@example.com", When: time.Now()},
+	})
 
 	// STEP 4: Create Feature A
 	t.Log("Step 4: Creating Feature A 'User Authentication'...")
@@ -202,6 +206,7 @@ func Login(username, password string) error {
 
 	// Make changes on Feature B
 	t.Log("Step 5b: Making changes on Feature B...")
+
 	dbFile := filepath.Join(projectDir, "database.go")
 	dbContent := `package main
 
@@ -214,18 +219,15 @@ func Connect(dsn string) error {
 		t.Fatalf("Failed to create database.go: %v", err)
 	}
 
-	// Commit changes on Feature B
-	if _, err := worktree.Add("database.go"); err != nil {
+	// Commit changes on Feature B using native git for consistency with fogit
+	addCmd := exec.Command("git", "add", "database.go")
+	addCmd.Dir = projectDir
+	if err := addCmd.Run(); err != nil {
 		t.Fatalf("Failed to stage database.go: %v", err)
 	}
-	_, err = worktree.Commit("Add database connection feature", &gogit.CommitOptions{
-		Author: &object.Signature{
-			Name:  "Test User",
-			Email: "test@example.com",
-			When:  time.Now(),
-		},
-	})
-	if err != nil {
+	commitCmd := exec.Command("git", "commit", "-m", "Add database connection feature")
+	commitCmd.Dir = projectDir
+	if err := commitCmd.Run(); err != nil {
 		t.Fatalf("Failed to commit Feature B changes: %v", err)
 	}
 
@@ -453,12 +455,9 @@ func TestE2E_FeatureSwitchingByPartialID(t *testing.T) {
 		t.Fatalf("Failed to get HEAD: %v", err)
 	}
 	baseBranch := head.Name().Short()
-	if baseBranch != "main" {
-		output, err = runFogit(t, projectDir, "config", "set", "workflow.base_branch", baseBranch)
-		if err != nil {
-			t.Fatalf("Failed to set base branch: %v\nOutput: %s", err, output)
-		}
-	}
+	// Configure workflow settings for test stability
+	_, _ = runFogit(t, projectDir, "config", "set", "workflow.base_branch", baseBranch)
+	_, _ = runFogit(t, projectDir, "config", "set", "workflow.create_branch_from", "trunk")
 
 	// Create a feature
 	output, err = runFogit(t, projectDir, "feature", "Test Feature", "--description", "For partial ID test")

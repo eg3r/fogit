@@ -52,8 +52,8 @@ func runRelationships(cmd *cobra.Command, args []string) error {
 
 	ctx := cmd.Context()
 
-	// Find feature using the consolidated helper
-	feature, err := FindFeatureWithSuggestions(ctx, cmdCtx.Repo, identifier, cmdCtx.Config, "fogit relationships <id>")
+	// Find feature using cross-branch discovery
+	feature, err := FindFeatureCrossBranch(ctx, cmdCtx, identifier, "fogit relationships <id>")
 	if err != nil {
 		return err
 	}

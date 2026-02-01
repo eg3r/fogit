@@ -239,7 +239,7 @@ func TestHandleBranchCreation_WorkflowModes(t *testing.T) {
 				},
 			}
 
-			err := HandleBranchCreation(tt.featureName, cfg, tt.sameFlag, tt.isolateFlag)
+			err := HandleBranchCreation(tt.featureName, cfg, tt.sameFlag, tt.isolateFlag, false)
 
 			if tt.wantErr {
 				if err == nil {

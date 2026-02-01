@@ -2,15 +2,12 @@ package commands
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/spf13/cobra"
 
-	"github.com/eg3r/fogit/internal/git"
 	"github.com/eg3r/fogit/internal/storage"
-	"github.com/eg3r/fogit/pkg/fogit"
 )
 
 var (
@@ -48,49 +45,21 @@ func init() {
 }
 
 func runLog(cmd *cobra.Command, args []string) error {
-	// Find git root
-	cwd, err := os.Getwd()
+	// Get command context (handles git root and fogit dir discovery)
+	cmdCtx, err := GetCommandContext()
 	if err != nil {
-		return fmt.Errorf("failed to get current directory: %w", err)
+		return err
 	}
 
-	gitRoot, err := git.FindGitRoot(cwd)
-	if err != nil {
-		return fmt.Errorf("not in a git repository: %w", err)
-	}
-
-	// Find .fogit directory
-	fogitDir := filepath.Join(gitRoot, ".fogit")
-	if _, statErr := os.Stat(fogitDir); os.IsNotExist(statErr) {
-		return fmt.Errorf(".fogit directory not found. Run 'fogit init' first")
-	}
-
-	// Open git repository
-	gitRepo, err := git.OpenRepository(gitRoot)
-	if err != nil {
-		return fmt.Errorf("failed to open git repository: %w", err)
-	}
+	gitRepo := cmdCtx.Git.GetGitRepo()
 
 	// If feature is specified, get commits for that feature's file
 	var featurePath string
 	if logFeature != "" {
-		// Find the feature
-		repo := getRepository(fogitDir)
-		featuresList, listErr := repo.List(cmd.Context(), &fogit.Filter{})
-		if listErr != nil {
-			return fmt.Errorf("failed to list features: %w", listErr)
-		}
-
-		var targetFeature *fogit.Feature
-		for _, f := range featuresList {
-			if f.Name == logFeature || f.ID == logFeature {
-				targetFeature = f
-				break
-			}
-		}
-
-		if targetFeature == nil {
-			return fmt.Errorf("feature not found: %s", logFeature)
+		// Find the feature using cross-branch discovery
+		feature, findErr := FindFeatureCrossBranch(cmd.Context(), cmdCtx, logFeature, "fogit log --feature <id>")
+		if findErr != nil {
+			return findErr
 		}
 
 		// Get feature file path
@@ -100,7 +69,7 @@ func runLog(cmd *cobra.Command, args []string) error {
 			NormalizeUnicode: true,
 			EmptyFallback:    "unnamed",
 		}
-		featurePath = filepath.Join("features", storage.Slugify(targetFeature.Name, opts)+".yml")
+		featurePath = filepath.Join("features", storage.Slugify(feature.Name, opts)+".yml")
 	}
 
 	// Parse since date if provided

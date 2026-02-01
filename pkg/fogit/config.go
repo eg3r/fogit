@@ -33,10 +33,11 @@ type UIConfig struct {
 
 // WorkflowConfig contains Git workflow settings
 type WorkflowConfig struct {
-	Mode                string `yaml:"mode"` // "branch-per-feature" or "trunk-based"
-	BaseBranch          string `yaml:"base_branch"`
-	AllowSharedBranches bool   `yaml:"allow_shared_branches"`
-	VersionFormat       string `yaml:"version_format"` // "simple" (1, 2, 3) or "semantic" (1.0.0, 1.1.0, 2.0.0)
+	Mode                string `yaml:"mode"`                  // "branch-per-feature" or "trunk-based"
+	BaseBranch          string `yaml:"base_branch"`           // Trunk branch name (default: "main")
+	CreateBranchFrom    string `yaml:"create_branch_from"`    // Where to create feature branches from: "trunk", "warn", "current"
+	AllowSharedBranches bool   `yaml:"allow_shared_branches"` // Allow --same flag for shared branches
+	VersionFormat       string `yaml:"version_format"`        // "simple" (1, 2, 3) or "semantic" (1.0.0, 1.1.0, 2.0.0)
 }
 
 // RelationshipsConfig contains relationship system configuration
@@ -101,6 +102,7 @@ func DefaultConfig() *Config {
 		Workflow: WorkflowConfig{
 			Mode:                "branch-per-feature",
 			BaseBranch:          "main",
+			CreateBranchFrom:    "trunk", // Default: create feature branches from trunk
 			AllowSharedBranches: true,
 			VersionFormat:       "simple", // Default to simple versioning (1, 2, 3)
 		},
@@ -333,6 +335,15 @@ func (c *Config) Validate() error {
 	default:
 		return fmt.Errorf("workflow.version_format '%s' is invalid (must be: simple, semantic)",
 			c.Workflow.VersionFormat)
+	}
+
+	// Validate create_branch_from (empty defaults to "trunk" at runtime)
+	switch c.Workflow.CreateBranchFrom {
+	case "", "trunk", "warn", "current":
+		// Valid
+	default:
+		return fmt.Errorf("workflow.create_branch_from '%s' is invalid (must be: trunk, warn, current)",
+			c.Workflow.CreateBranchFrom)
 	}
 
 	// 5. Validate default priority if set

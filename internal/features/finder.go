@@ -350,23 +350,34 @@ func extractLocalBranchName(remoteBranch string) string {
 
 // ListFeaturesAcrossBranches returns all features from all branches.
 // This is useful for fogit list and fogit search commands.
+// When a feature exists on multiple branches (e.g., stale snapshots from branch creation),
+// the version with the most recent modified_at timestamp wins to ensure consistent state.
 func ListFeaturesAcrossBranches(ctx context.Context, repo fogit.Repository, gitRepo *git.Repository) ([]*CrossBranchFeature, error) {
-	var allFeatures []*CrossBranchFeature
-	seenIDs := make(map[string]bool)
+	// Use map to track best version of each feature (most recent modified_at wins)
+	featureMap := make(map[string]*CrossBranchFeature)
+
+	// Helper to add or update feature in map
+	addOrUpdateFeature := func(f *fogit.Feature, branch string, isRemote bool) {
+		cbf := &CrossBranchFeature{
+			Feature:  f,
+			Branch:   branch,
+			IsRemote: isRemote,
+		}
+		existing, seen := featureMap[f.ID]
+		if !seen {
+			featureMap[f.ID] = cbf
+		} else if f.GetModifiedAt().After(existing.Feature.GetModifiedAt()) {
+			// Prefer version with most recent modified_at (authoritative branch has latest changes)
+			featureMap[f.ID] = cbf
+		}
+	}
 
 	// Step 1: Get features from current branch
 	currentBranch, _ := gitRepo.GetCurrentBranch()
 	localFeatures, err := repo.List(ctx, &fogit.Filter{})
 	if err == nil {
 		for _, f := range localFeatures {
-			if !seenIDs[f.ID] {
-				seenIDs[f.ID] = true
-				allFeatures = append(allFeatures, &CrossBranchFeature{
-					Feature:  f,
-					Branch:   currentBranch,
-					IsRemote: false,
-				})
-			}
+			addOrUpdateFeature(f, currentBranch, false)
 		}
 	}
 
@@ -376,14 +387,7 @@ func ListFeaturesAcrossBranches(ctx context.Context, repo fogit.Repository, gitR
 		trunkFeatures, err := listFeaturesOnBranch(gitRepo, trunkBranch)
 		if err == nil {
 			for _, f := range trunkFeatures {
-				if !seenIDs[f.ID] {
-					seenIDs[f.ID] = true
-					allFeatures = append(allFeatures, &CrossBranchFeature{
-						Feature:  f,
-						Branch:   trunkBranch,
-						IsRemote: false,
-					})
-				}
+				addOrUpdateFeature(f, trunkBranch, false)
 			}
 		}
 	}
@@ -399,14 +403,7 @@ func ListFeaturesAcrossBranches(ctx context.Context, repo fogit.Repository, gitR
 			branchFeatures, err := listFeaturesOnBranch(gitRepo, branch)
 			if err == nil {
 				for _, f := range branchFeatures {
-					if !seenIDs[f.ID] {
-						seenIDs[f.ID] = true
-						allFeatures = append(allFeatures, &CrossBranchFeature{
-							Feature:  f,
-							Branch:   branch,
-							IsRemote: false,
-						})
-					}
+					addOrUpdateFeature(f, branch, false)
 				}
 			}
 		}
@@ -421,17 +418,16 @@ func ListFeaturesAcrossBranches(ctx context.Context, repo fogit.Repository, gitR
 			remoteFeatures, err := listFeaturesOnBranch(gitRepo, remoteBranch)
 			if err == nil {
 				for _, f := range remoteFeatures {
-					if !seenIDs[f.ID] {
-						seenIDs[f.ID] = true
-						allFeatures = append(allFeatures, &CrossBranchFeature{
-							Feature:  f,
-							Branch:   remoteBranch,
-							IsRemote: true,
-						})
-					}
+					addOrUpdateFeature(f, remoteBranch, true)
 				}
 			}
 		}
+	}
+
+	// Convert map to slice
+	allFeatures := make([]*CrossBranchFeature, 0, len(featureMap))
+	for _, cbf := range featureMap {
+		allFeatures = append(allFeatures, cbf)
 	}
 
 	return allFeatures, nil
