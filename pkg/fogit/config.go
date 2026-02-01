@@ -5,6 +5,25 @@ import (
 	"time"
 )
 
+// Cycle detection modes for relationship categories
+const (
+	CycleDetectionStrict = "strict" // Fail on cycle detection
+	CycleDetectionWarn   = "warn"   // Log warning but allow
+	CycleDetectionNone   = "none"   // No cycle detection
+)
+
+// ValidCycleDetectionModes contains all valid cycle detection mode values
+var ValidCycleDetectionModes = []string{CycleDetectionStrict, CycleDetectionWarn, CycleDetectionNone}
+
+// IsValidCycleDetectionMode checks if a mode string is valid
+func IsValidCycleDetectionMode(mode string) bool {
+	switch mode {
+	case CycleDetectionStrict, CycleDetectionWarn, CycleDetectionNone:
+		return true
+	}
+	return false
+}
+
 // Config represents the FoGit repository configuration (.fogit/config.yml)
 type Config struct {
 	Repository      RepositoryConfig    `yaml:"repository"`
@@ -305,16 +324,13 @@ func (c *Config) Validate() error {
 	// 3. Validate relationship categories
 	for catName, catDef := range c.Relationships.Categories {
 		// Check cycle_detection values
-		switch catDef.CycleDetection {
-		case "strict", "warn", "none":
-			// Valid
-		default:
+		if !IsValidCycleDetectionMode(catDef.CycleDetection) {
 			return fmt.Errorf("category '%s' has invalid cycle_detection '%s' (must be: strict, warn, none)",
 				catName, catDef.CycleDetection)
 		}
 
 		// Logical check: if allow_cycles is true, cycle_detection should be "none"
-		if catDef.AllowCycles && catDef.CycleDetection != "none" {
+		if catDef.AllowCycles && catDef.CycleDetection != CycleDetectionNone {
 			return fmt.Errorf("category '%s' has allow_cycles=true but cycle_detection='%s' (should be 'none' when cycles allowed)",
 				catName, catDef.CycleDetection)
 		}

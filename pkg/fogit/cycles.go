@@ -35,13 +35,13 @@ func DetectCycleWithConfig(ctx context.Context, source *Feature, rel *Relationsh
 	if err != nil {
 		// Handle based on detection mode
 		switch catConfig.CycleDetection {
-		case "strict":
+		case CycleDetectionStrict:
 			return err
-		case "warn":
+		case CycleDetectionWarn:
 			// Log warning but don't fail
 			log.Printf("WARNING: Cycle detected in %s relationship: %v", category, err)
 			return nil
-		case "none":
+		case CycleDetectionNone:
 			return nil
 		default:
 			return err
