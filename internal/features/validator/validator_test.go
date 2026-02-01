@@ -7,58 +7,14 @@ import (
 	"github.com/eg3r/fogit/pkg/fogit"
 )
 
-// mockRepository is a simple mock for testing
-type mockRepository struct {
-	features []*fogit.Feature
-}
-
-func (m *mockRepository) Create(ctx context.Context, f *fogit.Feature) error {
-	m.features = append(m.features, f)
-	return nil
-}
-
-func (m *mockRepository) Get(ctx context.Context, id string) (*fogit.Feature, error) {
-	for _, f := range m.features {
-		if f.ID == id {
-			return f, nil
-		}
-	}
-	return nil, fogit.ErrNotFound
-}
-
-func (m *mockRepository) List(ctx context.Context, filter *fogit.Filter) ([]*fogit.Feature, error) {
-	return m.features, nil
-}
-
-func (m *mockRepository) Update(ctx context.Context, f *fogit.Feature) error {
-	for i, existing := range m.features {
-		if existing.ID == f.ID {
-			m.features[i] = f
-			return nil
-		}
-	}
-	return fogit.ErrNotFound
-}
-
-func (m *mockRepository) Delete(ctx context.Context, id string) error {
-	for i, f := range m.features {
-		if f.ID == id {
-			m.features = append(m.features[:i], m.features[i+1:]...)
-			return nil
-		}
-	}
-	return fogit.ErrNotFound
-}
-
 func TestValidator_EmptyRepository(t *testing.T) {
-	repo := &mockRepository{}
 	cfg := fogit.DefaultConfig()
 
-	v := New(repo, cfg)
-	result, err := v.Validate(context.Background())
+	v := New(nil, cfg) // repo not needed when features provided directly
+	result, err := v.ValidateFeatures(context.Background(), []*fogit.Feature{})
 
 	if err != nil {
-		t.Fatalf("Validate() error = %v, want nil", err)
+		t.Fatalf("ValidateFeatures() error = %v, want nil", err)
 	}
 
 	if result.FeaturesCount != 0 {
@@ -78,16 +34,14 @@ func TestValidator_ValidFeature(t *testing.T) {
 	feature := fogit.NewFeature("Test Feature")
 	feature.SetPriority(fogit.PriorityMedium)
 
-	repo := &mockRepository{
-		features: []*fogit.Feature{feature},
-	}
+	features := []*fogit.Feature{feature}
 	cfg := fogit.DefaultConfig()
 
-	v := New(repo, cfg)
-	result, err := v.Validate(context.Background())
+	v := New(nil, cfg) // repo not needed when features provided directly
+	result, err := v.ValidateFeatures(context.Background(), features)
 
 	if err != nil {
-		t.Fatalf("Validate() error = %v, want nil", err)
+		t.Fatalf("ValidateFeatures() error = %v, want nil", err)
 	}
 
 	if result.FeaturesCount != 1 {
@@ -108,16 +62,14 @@ func TestValidator_OrphanedRelationship(t *testing.T) {
 		},
 	}
 
-	repo := &mockRepository{
-		features: []*fogit.Feature{feature},
-	}
+	features := []*fogit.Feature{feature}
 	cfg := fogit.DefaultConfig()
 
-	v := New(repo, cfg)
-	result, err := v.Validate(context.Background())
+	v := New(nil, cfg) // repo not needed when features provided directly
+	result, err := v.ValidateFeatures(context.Background(), features)
 
 	if err != nil {
-		t.Fatalf("Validate() error = %v, want nil", err)
+		t.Fatalf("ValidateFeatures() error = %v, want nil", err)
 	}
 
 	if result.Errors == 0 {

@@ -8,6 +8,7 @@ import (
 
 	"github.com/eg3r/fogit/internal/features/validator"
 	"github.com/eg3r/fogit/internal/printer"
+	"github.com/eg3r/fogit/pkg/fogit"
 )
 
 var validateCmd = &cobra.Command{
@@ -59,9 +60,26 @@ func runValidate(cmd *cobra.Command, args []string) error {
 		fmt.Println()
 	}
 
-	// Create validator and run validation
+	// Create validator
 	v := validator.New(repo, cfg)
-	result, err := v.Validate(ctx)
+
+	// Load features - use cross-branch discovery in branch-per-feature mode
+	// This ensures relationships to features on other branches are not marked as orphaned
+	var featuresList []*fogit.Feature
+	if cfg.Workflow.Mode == "branch-per-feature" && cmdCtx.Git != nil && cmdCtx.Git.GetGitRepo() != nil {
+		featuresList, err = ListFeaturesCrossBranch(ctx, cmdCtx, nil)
+		if err != nil {
+			return fmt.Errorf("failed to list features across branches: %w", err)
+		}
+	} else {
+		// Trunk-based mode or no git - use current branch only
+		featuresList, err = repo.List(ctx, nil)
+		if err != nil {
+			return fmt.Errorf("failed to list features: %w", err)
+		}
+	}
+
+	result, err := v.ValidateFeatures(ctx, featuresList)
 	if err != nil {
 		return fmt.Errorf("validation failed: %w", err)
 	}
@@ -78,8 +96,19 @@ func runValidate(cmd *cobra.Command, args []string) error {
 			printer.PrintFixResult(fixResult)
 		}
 
-		// Re-validate after fixes
-		result, err = v.Validate(ctx)
+		// Re-validate after fixes - reload features using the same method
+		if cfg.Workflow.Mode == "branch-per-feature" && cmdCtx.Git != nil && cmdCtx.Git.GetGitRepo() != nil {
+			featuresList, err = ListFeaturesCrossBranch(ctx, cmdCtx, nil)
+			if err != nil {
+				return fmt.Errorf("failed to list features across branches: %w", err)
+			}
+		} else {
+			featuresList, err = repo.List(ctx, nil)
+			if err != nil {
+				return fmt.Errorf("failed to list features: %w", err)
+			}
+		}
+		result, err = v.ValidateFeatures(ctx, featuresList)
 		if err != nil {
 			return fmt.Errorf("re-validation failed: %w", err)
 		}

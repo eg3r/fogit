@@ -2,7 +2,6 @@ package validator
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/eg3r/fogit/internal/storage"
 	"github.com/eg3r/fogit/pkg/fogit"
@@ -24,14 +23,9 @@ func New(repo fogit.Repository, config *fogit.Config) *Validator {
 	}
 }
 
-// Validate performs all validation checks and returns results
-func (v *Validator) Validate(ctx context.Context) (*ValidationResult, error) {
-	// Load all features
-	features, err := v.repo.List(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to list features: %w", err)
-	}
-
+// ValidateFeatures performs all validation checks on the provided feature list.
+// The caller is responsible for loading features (single branch or cross-branch).
+func (v *Validator) ValidateFeatures(ctx context.Context, features []*fogit.Feature) (*ValidationResult, error) {
 	v.features = features
 	v.featureMap = make(map[string]*fogit.Feature)
 	for _, f := range features {
