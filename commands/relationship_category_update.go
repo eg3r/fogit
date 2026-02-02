@@ -13,7 +13,7 @@ var (
 	categoryUpdateKeepOldAlias  bool
 	categoryUpdateDescription   string
 	categoryUpdateAllowCycles   bool
-	categoryUpdateNoAllowCycles bool
+	categoryUpdateNoCycles      bool
 	categoryUpdateDetection     string
 	categoryUpdateIncludeImpact bool
 	categoryUpdateExcludeImpact bool
@@ -29,16 +29,16 @@ Other flags modify properties without renaming.
 
 Examples:
   # Rename a category
-  fogit relationship category update dependency --name dependencies
+  fogit relationship category update workflow --name process
 
   # Keep old name as alias during rename
   fogit relationship category update dependency --name dependencies --keep-old-as-alias
 
-  # Update properties
-  fogit relationship category update dependency --description "Updated" --allow-cycles
+  # Change cycle detection rules
+  fogit relationship category update informational --no-cycles --detection warn
 
-  # Change cycle detection mode
-  fogit relationship category update structural --detection strict`,
+  # Update multiple properties
+  fogit relationship category update structural --description "Core dependencies" --detection strict`,
 	Args: cobra.ExactArgs(1),
 	RunE: runRelationshipCategoryUpdate,
 }
@@ -48,7 +48,7 @@ func init() {
 	relationshipCategoryUpdateCmd.Flags().BoolVar(&categoryUpdateKeepOldAlias, "keep-old-as-alias", false, "Keep old name as alias when renaming")
 	relationshipCategoryUpdateCmd.Flags().StringVar(&categoryUpdateDescription, "description", "", "Update description")
 	relationshipCategoryUpdateCmd.Flags().BoolVar(&categoryUpdateAllowCycles, "allow-cycles", false, "Allow cycles in this category")
-	relationshipCategoryUpdateCmd.Flags().BoolVar(&categoryUpdateNoAllowCycles, "no-allow-cycles", false, "Disallow cycles in this category")
+	relationshipCategoryUpdateCmd.Flags().BoolVar(&categoryUpdateNoCycles, "no-cycles", false, "Prevent cycles in this category")
 	relationshipCategoryUpdateCmd.Flags().StringVar(&categoryUpdateDetection, "detection", "", "Cycle detection mode: strict, warn, none")
 	relationshipCategoryUpdateCmd.Flags().BoolVar(&categoryUpdateIncludeImpact, "include-in-impact", false, "Include in impact analysis")
 	relationshipCategoryUpdateCmd.Flags().BoolVar(&categoryUpdateExcludeImpact, "exclude-from-impact", false, "Exclude from impact analysis")
@@ -65,8 +65,8 @@ func runRelationshipCategoryUpdate(cmd *cobra.Command, args []string) error {
 	}
 
 	// Validate conflicting flags
-	if categoryUpdateAllowCycles && categoryUpdateNoAllowCycles {
-		return fmt.Errorf("cannot use both --allow-cycles and --no-allow-cycles")
+	if categoryUpdateAllowCycles && categoryUpdateNoCycles {
+		return fmt.Errorf("cannot use both --allow-cycles and --no-cycles")
 	}
 	if categoryUpdateIncludeImpact && categoryUpdateExcludeImpact {
 		return fmt.Errorf("cannot use both --include-in-impact and --exclude-from-impact")
@@ -86,7 +86,7 @@ func runRelationshipCategoryUpdate(cmd *cobra.Command, args []string) error {
 		b := true
 		opts.AllowCycles = &b
 	}
-	if categoryUpdateNoAllowCycles {
+	if categoryUpdateNoCycles {
 		b := false
 		opts.AllowCycles = &b
 	}
