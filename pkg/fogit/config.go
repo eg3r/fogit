@@ -64,7 +64,6 @@ type RelationshipsConfig struct {
 	System     RelationshipSystem                `yaml:"system"`
 	Categories map[string]RelationshipCategory   `yaml:"categories"`
 	Types      map[string]RelationshipTypeConfig `yaml:"types"`
-	Defaults   RelationshipDefaults              `yaml:"defaults"`
 }
 
 // RelationshipSystem contains system-wide relationship settings
@@ -91,12 +90,6 @@ type RelationshipTypeConfig struct {
 	Bidirectional bool     `yaml:"bidirectional"`
 	Description   string   `yaml:"description,omitempty"`
 	Aliases       []string `yaml:"aliases,omitempty"`
-}
-
-// RelationshipDefaults contains default values for relationships
-type RelationshipDefaults struct {
-	Category string `yaml:"relationship_category"`  // Default category for undefined types
-	TreeType string `yaml:"tree_relationship_type"` // Default type for tree command
 }
 
 // FeatureSearchConfig contains fuzzy search configuration
@@ -266,32 +259,13 @@ func DefaultConfig() *Config {
 					Description:   "Feature is blocked by another feature",
 				},
 			},
-			Defaults: RelationshipDefaults{
-				Category: "informational",
-				TreeType: "depends-on",
-			},
 		},
 	}
 }
 
 // Validate checks the configuration for integrity and consistency
 func (c *Config) Validate() error {
-	// 1. Validate defaults reference existing types and categories
-	if c.Relationships.Defaults.TreeType != "" {
-		if _, exists := c.Relationships.Types[c.Relationships.Defaults.TreeType]; !exists {
-			return fmt.Errorf("defaults.tree_relationship_type '%s' not defined in relationship_types",
-				c.Relationships.Defaults.TreeType)
-		}
-	}
-
-	if c.Relationships.Defaults.Category != "" {
-		if _, exists := c.Relationships.Categories[c.Relationships.Defaults.Category]; !exists {
-			return fmt.Errorf("defaults.relationship_category '%s' not defined in relationship_categories",
-				c.Relationships.Defaults.Category)
-		}
-	}
-
-	// 2. Validate all relationship types
+	// 1. Validate all relationship types
 	for typeName, typeDef := range c.Relationships.Types {
 		// Check category exists
 		if _, exists := c.Relationships.Categories[typeDef.Category]; !exists {

@@ -185,9 +185,9 @@ func TestRelationship_GetCategory_UnknownType(t *testing.T) {
 	rel := Relationship{Type: "unknown-type"}
 	cat := rel.GetCategory(cfg)
 
-	// Should return default category
-	if cat != cfg.Relationships.Defaults.Category {
-		t.Errorf("GetCategory() = %q, want default category %q", cat, cfg.Relationships.Defaults.Category)
+	// Should return empty string for unknown types
+	if cat != "" {
+		t.Errorf("GetCategory() = %q, want empty string for unknown type", cat)
 	}
 }
 

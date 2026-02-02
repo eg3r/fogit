@@ -17,20 +17,6 @@ func TestConfig_Validate(t *testing.T) {
 			wantErr: "",
 		},
 		{
-			name: "invalid tree type default",
-			setup: func(c *Config) {
-				c.Relationships.Defaults.TreeType = "nonexistent-type"
-			},
-			wantErr: "not defined in relationship_types",
-		},
-		{
-			name: "invalid category default",
-			setup: func(c *Config) {
-				c.Relationships.Defaults.Category = "nonexistent-category"
-			},
-			wantErr: "not defined in relationship_categories",
-		},
-		{
 			name: "type references unknown category",
 			setup: func(c *Config) {
 				c.Relationships.Types["test"] = RelationshipTypeConfig{
@@ -183,20 +169,6 @@ func TestConfig_Validate(t *testing.T) {
 					CycleDetection:  "none",
 					IncludeInImpact: true,
 				}
-			},
-			wantErr: "",
-		},
-		{
-			name: "empty tree type default is valid",
-			setup: func(c *Config) {
-				c.Relationships.Defaults.TreeType = ""
-			},
-			wantErr: "",
-		},
-		{
-			name: "empty category default is valid",
-			setup: func(c *Config) {
-				c.Relationships.Defaults.Category = ""
 			},
 			wantErr: "",
 		},

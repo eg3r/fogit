@@ -188,8 +188,8 @@ func testCrossBranchStats(t *testing.T, projectDir string) {
 func testCrossBranchTree(t *testing.T, projectDir string) {
 	t.Log("Testing fogit tree...")
 
-	// Test tree with no argument (should find root features)
-	output, err := runFogit(t, projectDir, "tree")
+	// Test tree with --type flag (required after spec change)
+	output, err := runFogit(t, projectDir, "tree", "--type", "depends-on")
 	if err != nil {
 		// If it errors with "no root features found", that's the bug
 		if strings.Contains(output, "No root features") || strings.Contains(output, "No features found") {
@@ -208,7 +208,7 @@ func testCrossBranchTree(t *testing.T, projectDir string) {
 
 	// Test tree with specific feature from another branch
 	t.Log("Testing fogit tree logging (feature on different branch)...")
-	output, err = runFogit(t, projectDir, "tree", "logging")
+	output, err = runFogit(t, projectDir, "tree", "--type", "depends-on", "logging")
 	if err != nil {
 		if strings.Contains(output, "not found") || strings.Contains(output, "Error") {
 			t.Fatalf("BUG: fogit tree can't find 'logging' feature on other branch\n"+

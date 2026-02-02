@@ -108,19 +108,6 @@ func mergeWithDefaults(config *fogit.Config) {
 	if config.Relationships.Categories == nil {
 		config.Relationships.Categories = defaults.Relationships.Categories
 	}
-	// Merge relationship defaults if not set, but only if the referenced
-	// types/categories exist (to avoid validation errors when user explicitly
-	// defines empty types/categories)
-	if config.Relationships.Defaults.Category == "" {
-		if _, exists := config.Relationships.Categories[defaults.Relationships.Defaults.Category]; exists {
-			config.Relationships.Defaults.Category = defaults.Relationships.Defaults.Category
-		}
-	}
-	if config.Relationships.Defaults.TreeType == "" {
-		if _, exists := config.Relationships.Types[defaults.Relationships.Defaults.TreeType]; exists {
-			config.Relationships.Defaults.TreeType = defaults.Relationships.Defaults.TreeType
-		}
-	}
 
 	// FeatureSearch defaults
 	if config.FeatureSearch.MinSimilarity == 0 {

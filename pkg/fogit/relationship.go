@@ -322,10 +322,11 @@ func (r *Relationship) ValidateWithConfig(config *Config) error {
 	return nil
 }
 
-// GetCategory returns the category of this relationship based on config
+// GetCategory returns the category of this relationship based on config.
+// Returns empty string if the relationship type is not defined.
 func (r *Relationship) GetCategory(config *Config) string {
 	if typeConfig, exists := config.Relationships.Types[string(r.Type)]; exists {
 		return typeConfig.Category
 	}
-	return config.Relationships.Defaults.Category
+	return ""
 }

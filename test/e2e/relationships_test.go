@@ -629,7 +629,7 @@ func TestE2E_RelationshipTreeAndImpacts(t *testing.T) {
 
 	// Step 5: Test tree command - show tree from Core Library
 	t.Log("Step 5: Testing tree command from Core Library...")
-	output, err = runFogit(t, projectDir, "tree", "Core Library")
+	output, err = runFogit(t, projectDir, "tree", "--type", "depends-on", "Core Library")
 	if err != nil {
 		t.Fatalf("Failed to run tree command: %v\nOutput: %s", err, output)
 	}
@@ -642,7 +642,7 @@ func TestE2E_RelationshipTreeAndImpacts(t *testing.T) {
 
 	// Step 6: Test tree command - show full tree (no feature specified)
 	t.Log("Step 6: Testing tree command (all features)...")
-	output, err = runFogit(t, projectDir, "tree")
+	output, err = runFogit(t, projectDir, "tree", "--type", "depends-on")
 	if err != nil {
 		t.Fatalf("Failed to run tree command: %v\nOutput: %s", err, output)
 	}
@@ -693,7 +693,7 @@ func TestE2E_RelationshipTreeAndImpacts(t *testing.T) {
 
 	// Step 10: Test tree with depth limit
 	t.Log("Step 10: Testing tree with depth limit...")
-	output, err = runFogit(t, projectDir, "tree", "--depth", "1")
+	output, err = runFogit(t, projectDir, "tree", "--type", "depends-on", "--depth", "1")
 	if err != nil {
 		t.Fatalf("Failed to run tree with depth: %v\nOutput: %s", err, output)
 	}
@@ -714,7 +714,7 @@ func TestE2E_RelationshipTreeAndImpacts(t *testing.T) {
 
 	// Step 12: Test tree with JSON format
 	t.Log("Step 12: Testing tree with JSON format...")
-	output, err = runFogit(t, projectDir, "tree", "Core Library", "--format", "json")
+	output, err = runFogit(t, projectDir, "tree", "--type", "depends-on", "Core Library", "--format", "json")
 	if err != nil {
 		t.Fatalf("Failed to run tree with JSON format: %v\nOutput: %s", err, output)
 	}

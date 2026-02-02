@@ -25,8 +25,15 @@ var treeCmd = &cobra.Command{
 	Short: "Show hierarchical tree view of features",
 	Long: `Show hierarchical tree view of features based on their relationships.
 
+The --type flag is required to specify which relationship type(s) define the hierarchy.
+
 If a feature is specified, shows that feature as the root.
-Otherwise, shows all top-level features (those without parents).`,
+Otherwise, shows all top-level features (those without parents).
+
+Examples:
+  fogit tree --type depends-on
+  fogit tree "Parent Feature" --type contains
+  fogit tree "Auth System" --type depends-on --type implements`,
 	Args: cobra.MaximumNArgs(1),
 	RunE: runTree,
 }
@@ -36,7 +43,7 @@ func init() {
 	treeCmd.Flags().StringVar(&treeCategory, "category", "", "Filter by category")
 	treeCmd.Flags().StringVar(&treeState, "state", "", "Filter by state")
 	treeCmd.Flags().StringVar(&treeFormat, "format", "tree", "Output format: tree, json")
-	treeCmd.Flags().StringSliceVar(&treeTypes, "type", []string{}, "Relationship types for hierarchy (repeatable, default from config)")
+	treeCmd.Flags().StringSliceVar(&treeTypes, "type", []string{}, "Relationship types for hierarchy (required, repeatable)")
 	rootCmd.AddCommand(treeCmd)
 }
 

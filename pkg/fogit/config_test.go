@@ -90,14 +90,6 @@ func TestDefaultConfig(t *testing.T) {
 			}
 		}
 
-		// Test defaults
-		if cfg.Relationships.Defaults.Category != "informational" {
-			t.Errorf("Expected default category 'informational', got %s", cfg.Relationships.Defaults.Category)
-		}
-		if cfg.Relationships.Defaults.TreeType != "depends-on" {
-			t.Errorf("Expected default tree type 'depends-on', got %s", cfg.Relationships.Defaults.TreeType)
-		}
-
 		// Test specific relationship type properties
 		dependsOn := cfg.Relationships.Types["depends-on"]
 		if dependsOn.Category != "structural" {
@@ -257,10 +249,6 @@ func TestConfigStructFields(t *testing.T) {
 					Bidirectional: true,
 					Description:   "test relationship",
 				},
-			},
-			Defaults: RelationshipDefaults{
-				Category: "structural",
-				TreeType: "test",
 			},
 		},
 	}

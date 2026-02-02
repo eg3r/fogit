@@ -20,7 +20,6 @@ func TestTreeCommand_SingleType(t *testing.T) {
 	}
 
 	cfg := fogit.DefaultConfig()
-	cfg.Relationships.Defaults.TreeType = "contains"
 	if err := config.Save(fogitDir, cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -50,9 +49,9 @@ func TestTreeCommand_SingleType(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Reset flags and run via rootCmd with -C flag
+	// Reset flags and run via rootCmd with -C flag and --type
 	ResetFlags()
-	rootCmd.SetArgs([]string{"-C", tmpDir, "tree"})
+	rootCmd.SetArgs([]string{"-C", tmpDir, "tree", "--type", "contains"})
 
 	err := ExecuteRootCmd()
 	if err != nil {
@@ -144,23 +143,14 @@ func TestTreeCommand_InvalidType(t *testing.T) {
 	}
 }
 
-func TestTreeCommand_NoDefaultType(t *testing.T) {
+func TestTreeCommand_RequiresTypeFlag(t *testing.T) {
 	tmpDir := t.TempDir()
 	fogitDir := filepath.Join(tmpDir, ".fogit")
 	if err := os.MkdirAll(fogitDir, 0755); err != nil {
 		t.Fatal(err)
 	}
 
-	// Create config with no default tree type and no types at all
-	cfg := &fogit.Config{
-		Relationships: fogit.RelationshipsConfig{
-			Types:      make(map[string]fogit.RelationshipTypeConfig),
-			Categories: make(map[string]fogit.RelationshipCategory),
-			Defaults: fogit.RelationshipDefaults{
-				TreeType: "", // No default
-			},
-		},
-	}
+	cfg := fogit.DefaultConfig()
 	if err := config.Save(fogitDir, cfg); err != nil {
 		t.Fatal(err)
 	}
@@ -171,48 +161,17 @@ func TestTreeCommand_NoDefaultType(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Reset flags and run via rootCmd with -C flag
+	// Reset flags and run via rootCmd with -C flag but NO --type
 	ResetFlags()
 	rootCmd.SetArgs([]string{"-C", tmpDir, "tree"})
 
 	err := ExecuteRootCmd()
 	if err == nil {
-		t.Fatal("Expected error when no default type and no types defined")
+		t.Fatal("Expected error when --type not provided")
 	}
 
-	if !strings.Contains(err.Error(), "no tree relationship type configured") {
-		t.Errorf("Expected 'no tree relationship type configured' error, got: %v", err)
-	}
-}
-
-func TestTreeCommand_DefaultToNonCyclicType(t *testing.T) {
-	tmpDir := t.TempDir()
-	fogitDir := filepath.Join(tmpDir, ".fogit")
-	if err := os.MkdirAll(fogitDir, 0755); err != nil {
-		t.Fatal(err)
-	}
-
-	// Create config with no default but with types
-	cfg := fogit.DefaultConfig()
-	cfg.Relationships.Defaults.TreeType = "" // Remove default
-	if err := config.Save(fogitDir, cfg); err != nil {
-		t.Fatal(err)
-	}
-
-	repo := storage.NewFileRepository(fogitDir)
-	feature := fogit.NewFeature("Test")
-	if err := repo.Create(context.Background(), feature); err != nil {
-		t.Fatal(err)
-	}
-
-	// Reset flags and run via rootCmd with -C flag
-	ResetFlags()
-	rootCmd.SetArgs([]string{"-C", tmpDir, "tree"})
-
-	// Should not error - should fall back to first non-cyclic type
-	err := ExecuteRootCmd()
-	if err != nil {
-		t.Fatalf("tree command should not error with auto-fallback, got: %v", err)
+	if !strings.Contains(err.Error(), "--type flag is required") {
+		t.Errorf("Expected '--type flag is required' error, got: %v", err)
 	}
 }
 

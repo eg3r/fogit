@@ -7,44 +7,20 @@ import (
 )
 
 // DetermineTreeRelationshipTypes determines which relationship types to use for tree hierarchy.
-// It uses the following precedence:
-// 1. Explicitly provided types (if any)
-// 2. Default tree type from config
-// 3. First non-cyclic relationship type found
-// 4. First relationship type (if all allow cycles)
+// It requires explicit types to be provided via --type flag.
 func DetermineTreeRelationshipTypes(cfg *fogit.Config, explicitTypes []string) ([]string, error) {
-	// If explicit types provided, validate and use them
-	if len(explicitTypes) > 0 {
-		for _, hierarchyType := range explicitTypes {
-			if _, exists := cfg.Relationships.Types[hierarchyType]; !exists {
-				return nil, fmt.Errorf("relationship type '%s' not defined in config", hierarchyType)
-			}
-		}
-		return explicitTypes, nil
+	// Types must be explicitly provided via --type flag
+	if len(explicitTypes) == 0 {
+		return nil, fmt.Errorf("--type flag is required: specify which relationship type(s) to use for the tree hierarchy")
 	}
 
-	// Use default from config if available
-	if cfg.Relationships.Defaults.TreeType != "" {
-		return []string{cfg.Relationships.Defaults.TreeType}, nil
-	}
-
-	// Fallback: find first relationship type in a non-cyclic category
-	for typeName, typeConfig := range cfg.Relationships.Types {
-		if cat, exists := cfg.Relationships.Categories[typeConfig.Category]; exists {
-			if !cat.AllowCycles {
-				return []string{typeName}, nil
-			}
+	// Validate provided types exist in config
+	for _, hierarchyType := range explicitTypes {
+		if _, exists := cfg.Relationships.Types[hierarchyType]; !exists {
+			return nil, fmt.Errorf("relationship type '%s' not defined in config", hierarchyType)
 		}
 	}
-
-	// If all categories allow cycles, just use the first type
-	if len(cfg.Relationships.Types) > 0 {
-		for typeName := range cfg.Relationships.Types {
-			return []string{typeName}, nil
-		}
-	}
-
-	return nil, fmt.Errorf("no tree relationship type configured and no relationship types defined")
+	return explicitTypes, nil
 }
 
 // FindRoots finds features that are roots of the hierarchy (have no outgoing relationships of the specified types)
